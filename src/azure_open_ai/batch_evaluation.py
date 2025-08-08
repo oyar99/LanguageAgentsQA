@@ -73,7 +73,7 @@ expected and actual answer pairs
 
     jobs = [
         {
-            "custom_id": idx,
+            "custom_id": idx + 1,
             "method": "POST",
             "url": "/chat/completions",
             "body": {

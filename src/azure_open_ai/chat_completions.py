@@ -33,6 +33,8 @@ def chat_completions(
             presence_penalty=job["presence_penalty"],
             max_tokens=job["max_completion_tokens"],
             stop=job["stop"],
+            tools=job.get("tools", None),
+            tool_choice=job.get("tool_choice", None),
         )
 
         Logger().debug(
