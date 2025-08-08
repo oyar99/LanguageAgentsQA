@@ -92,7 +92,7 @@ class ReactAgent(Agent):
                             "function": {
                                 "name": "search",
                                 "description": "Returns a list of 5 most relevant documents \
-for a given query orderd by relevance.",
+for a given query orderd by relevance, using a dense retriever.",
                                 "parameters": {
                                     "type": "object",
                                     "properties": {
@@ -114,13 +114,17 @@ for a given query orderd by relevance.",
         result = None
         finish_reason = None
         sources = set()
+        iteration = 0
 
         while finish_reason != "stop":
+            iteration += 1
+
             result = chat_completions([
                 {
                     "custom_id": open_ai_request['custom_id'],
                     **open_ai_request['body'],
-                    "messages": messages
+                    "messages": messages,
+                    "tool_choice": "auto" if iteration < 5 else "none",
                 }
                 for open_ai_request in open_ai_requests
             ])[0][0]
@@ -208,8 +212,61 @@ default_job_args = {
 
 REACT_AGENT_PROMPT = '''You are a helpful Question Answering assistant. You will be presented with a question, and you \
 will need to search for relevant documents that support the answer to the question. You will then use these documents to provide an \
-EXACT and CONCISE answer to the question. Your answer should only use words from the documents you found. UNDER no circumstances \
-should you include any additional commentary, explanations, or reasoning in your final answer.
+EXACT answer, using only words found in the documents when possible. UNDER no circumstances should you include any additional commentary, \
+explanations, reasoning, or notes in your response. Your response MUST be concise and to the point. If the answer can be a single word \
+(e.g., Yes, No, a date, or an object), please provide just that word.
+
+You should decompose the question into multiple sub-questions if necessary, and search for relevant documents for each sub-question. \
+Each query needs to be optimized to maximize the probability of retrieving the most relevant documents using a semantic retriever. \
+As such, you can rephrase the question to make it more specific or to focus on a particular aspect of the question. \
+You should then use the retrieved documents to answer the original question.
+
+For example, consider the following question:
+
+"Were Scott Derrickson and Ed Wood of the same nationality?"
+
+You can decompose this question into two sub-questions, and then search for relevant documents for each sub-question.
+
+1. search("Scott Derrickson nationality")
+
+Scott Derrickson is an American film director, producer, and screenwriter. He is known for his work in the horror genre, including \
+films like "The Exorcism of Emily Rose" and "Doctor Strange".
+
+2. search("Ed Wood nationality")
+
+Ed Wood was an American filmmaker, actor, and writer, often regarded as one of the worst directors in film history. He is best known \
+for his cult classic "Plan 9 from Outer Space".
+
+Since both Scott Derrickson and Ed Wood are American, you can conclude that they are of the same nationality, and respond only with "Yes".
+
+Consider another question:
+
+"In which county is Kimbrough Memorial Stadium located?"
+
+You can first search for the location of Kimbrough Memorial Stadium.
+
+1. search("Kimbrough Memorial Stadium location")
+
+Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District, and is primarily \
+used for American football.
+
+Then, you can search for the county of Canyon, Texas.
+
+2. search("Canyon Texas county")
+
+Canyon is a city in, and the county seat of, Randall County, Texas, United States. The population was 13,303 at the 2010 census.
+
+Since Kimbrough Memorial Stadium is located in Canyon, Texas, and Canyon is in Randall County, you can conclude that Kimbrough \
+Memorial Stadium is located in Randall County, and respond with "Randall County".
+
+Your final answer MUST be formatted as a single line of text, containing ONLY the answer to the question following the aforementioned rules. \
+If the answer cannot be inferred with the information found in the documents, you MUST then respond with "N/A".
+'''
+
+REACT_AGENT_PROMPT_SIMPLIFIED = '''You are a helpful Question Answering assistant. You will be presented with a \
+question, and you will need to search for relevant documents that support the answer to the question. You will then use 
+these documents to provide an EXACT and CONCISE answer to the question. Your answer should only use words from the documents \
+you found. UNDER no circumstances should you include any additional commentary, explanations, or reasoning in your final answer.
 
 You should decompose the question into multiple sub-questions if necessary, and search for relevant documents for each sub-question. \
 You should then use the retrieved documents to answer the original question, analyzing the retrieved information to provide a correct \
