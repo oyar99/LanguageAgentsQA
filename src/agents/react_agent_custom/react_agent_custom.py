@@ -66,7 +66,12 @@ class ReactAgentCustom(Agent):
             self._searcher = Searcher(index=self._index, collection=[
                 doc['content'] for doc in self._corpus])
 
-    def _search_documents(self, query: str, context: str = "", enable_pruning=True) -> tuple[List[Dict[str, Any]], List[int]]:
+    def _search_documents(
+            self,
+            query: str,
+            context: str = "",
+            enable_pruning=True
+    ) -> tuple[List[Dict[str, Any]], List[int]]:
         """
         Search for documents using the ColBERT retriever.
 
