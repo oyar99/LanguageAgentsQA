@@ -200,7 +200,6 @@ with content and list of doc_ids.
                     response_content)
 
                 if not parsed_response:
-                    Logger().warn("Could not parse response, using fallback handling")
                     # Fallback: treat as final answer
                     final_answer = response_content
                     break
@@ -304,7 +303,6 @@ default_job_args = {
     'presence_penalty': 0.0
 }
 
-# Main instruction prompt for the custom model
 REACT_AGENT_CUSTOM_PROMPT = '''You will be presented with a question, and you will need to search for relevant \
 documents that support the answer to the question. You will then use these documents to provide an EXACT answer, \
 using only words found in the documents when possible. UNDER no circumstances should you include any additional \
@@ -324,7 +322,7 @@ You can decompose this question into two sub-questions, and then search for rele
 
 {\
 "thought": "I need to find the nationalities of both Scott Derrickson and Ed Wood to compare them.",\
-"actions": ["search('Scott Derrickson nationality')", "search('Ed Wood nationality')"],\
+"actions": ["search('Scott Derrickson nationality')", "search('Ed Wood nationality')"]\
 }
 
 In the next interaction, you will be given the search results for both queries in the "Observation" field.
@@ -353,7 +351,7 @@ You can first search for the location of Kimbrough Memorial Stadium.
 
 {\
 "thought": "I need to find where Kimbrough Memorial Stadium is located.",\
-"actions": ["search('Kimbrough Memorial Stadium location')"],\
+"actions": ["search('Kimbrough Memorial Stadium location')"]\
 }
 
 You will then receive the following observation:
@@ -369,7 +367,7 @@ Then, you can search for the county of Canyon, Texas.
 
 {\
 "thought": "The stadium is in Canyon, Texas, but I need to find which county Canyon is in.",\
-"actions": ["search('Canyon Texas county')"],\
+"actions": ["search('Canyon Texas county')"]\
 }
 
 You will then receive the following observation:
@@ -387,14 +385,14 @@ You will then be able to answer the original question as follows:
 "final_answer": "Randall County"\
 }
 
-Your intermidiate responses must be in JSON format with the following structure.
+Your intermidiate responses must be in valid JSON format with the following structure.
 
 {\
 "thought": "Your reasoning process",\
-"actions": ["search('search query')"],\
+"actions": ["search('search query')"]\
 }
 
-Your final answer must be formatted in JSON format with the following structure. Keep in mind that final_answer must contain \
+Your final answer must be formatted in valid JSON format with the following structure. Keep in mind that final_answer must contain \
 ONLY the answer to the question. If the answer cannot be inferred with the information found in the documents, you must then set final_answer to "N/A".
 
 {\
@@ -409,7 +407,7 @@ The schema must adhere to the following rules:
     - "search('search query')": Search for relevant documents for the given query.
 
     List of arguments supported by the search action:
-        - "search query": The query you will use to find relevant documents.
+        - "search query": The query you will use to find relevant documents. If the query contains quotes, please ensure they are properly escaped.
 
 - "final_answer" is a string that contains your final answer to the question. This field should only be included when providing your final answer. \
 If included, actions and action_input MUST NOT be included.
