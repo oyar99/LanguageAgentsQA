@@ -62,17 +62,46 @@ class ReactAgent(Agent):
             self._searcher = Searcher(index=self._index, collection=[
                 doc['content'] for doc in self._corpus])
 
-    # pylint: disable-next=too-many-locals
-    def reason(self, question: str) -> NoteBook:  # type: ignore
+    def _search_documents(self, query: str) -> tuple[list[RetrievedResult], list[int]]:
         """
-        Reason over the indexed dataset to answer the question.
+        Search for documents using the ColBERT retriever.
+
+        Args:
+            query (str): The search query.
+
+        Returns:
+            tuple[list[RetrievedResult], list[int]]: Tuple containing list of retrieved documents and list of doc_ids.
+        """
+        doc_ids, _ranking, scores = self._searcher.search(
+            query, k=self._args.k or 5)
+
+        documents = [RetrievedResult(
+            doc_id=self._corpus[doc_id]['doc_id'],
+            content=self._corpus[doc_id]['content'],
+            score=score
+        )
+            for doc_id, _, score in zip(doc_ids, _ranking, scores)]
+
+        Logger().debug(f"Search results for query '{query}': {documents}")
+
+        return documents, doc_ids
+
+    def _create_initial_request(self, question: str) -> list[dict]:
+        """
+        Create the initial OpenAI request configuration.
+
+        Args:
+            question (str): The question to answer.
+
+        Returns:
+            list[dict]: List containing the initial request configuration.
         """
         messages = [
             {"role": "system", "content": REACT_AGENT_PROMPT},
             {"role": "user", "content": question}
         ]
 
-        open_ai_requests = [
+        return [
             {
                 "custom_id": 1,
                 "method": "POST",
@@ -81,8 +110,8 @@ class ReactAgent(Agent):
                     "model": self._args.model,
                     "messages": messages,
                     "stop": ["\n"],
-                    "temperature": default_job_args['temperature'] 
-                        if supports_temperature_param(self._args.model) else None,
+                    "temperature": default_job_args['temperature']
+                    if supports_temperature_param(self._args.model) else None,
                     "frequency_penalty": default_job_args['frequency_penalty'],
                     "presence_penalty": default_job_args['presence_penalty'],
                     "max_completion_tokens": 500,
@@ -111,6 +140,41 @@ for a given query orderd by relevance, using a dense retriever.",
             }
         ]
 
+    def _process_tool_calls(self, tool_calls, messages: list, sources: set):
+        """
+        Process tool calls from the model response.
+
+        Args:
+            tool_calls: The tool calls from the model response.
+            messages (list): The conversation messages list to update.
+            sources (set): The set of source document IDs to update.
+        """
+        for tool_call in tool_calls:
+            if tool_call.function.name == "search":
+                function_args = json.loads(tool_call.function.arguments)
+                query = function_args.get("query")
+
+                documents, doc_ids = self._search_documents(query)
+
+                sources.update(doc_ids)
+
+                messages.append({
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "name": tool_call.function.name,
+                    "content": json.dumps({
+                        "documents": [doc['content'] for doc in documents]
+                    })
+                })
+
+    # pylint: disable-next=too-many-locals
+    def reason(self, question: str) -> NoteBook:  # type: ignore
+        """
+        Reason over the indexed dataset to answer the question.
+        """
+        open_ai_requests = self._create_initial_request(question)
+        messages = open_ai_requests[0]["body"]["messages"]
+
         result = None
         finish_reason = None
         sources = set()
@@ -134,37 +198,10 @@ for a given query orderd by relevance, using a dense retriever.",
             messages.append(result.choices[0].message)
 
             tool_calls = result.choices[0].message.tool_calls
-
             finish_reason = result.choices[0].finish_reason
 
             if tool_calls:
-                for tool_call in tool_calls:
-                    if tool_call.function.name == "search":
-                        function_args = json.loads(tool_call.function.arguments)
-                        query = function_args.get("query")
-                        doc_ids, _ranking, scores = self._searcher.search(
-                            query, k=self._args.k or 5)
-
-                        documents = [RetrievedResult(
-                            doc_id=self._corpus[doc_id]['doc_id'],
-                            content=self._corpus[doc_id]['content'],
-                            score=score
-                        )
-                            for doc_id, _, score in zip(doc_ids, _ranking, scores)]
-
-                        sources.update(doc_id for doc_id in doc_ids)
-
-                        Logger().debug(
-                            f"Search results for query '{query}': {documents}")
-
-                        messages.append({
-                            "tool_call_id": tool_call.id,
-                            "role": "tool",
-                            "name": tool_call.function.name,
-                            "content": json.dumps({
-                                "documents": [doc['content'] for doc in documents]
-                            })
-                        })
+                self._process_tool_calls(tool_calls, messages, sources)
 
         answer = result.choices[0].message.content.strip()
 

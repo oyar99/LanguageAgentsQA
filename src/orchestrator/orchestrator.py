@@ -9,6 +9,7 @@ from agents.dense.dense import Dense
 from agents.hippo_rag.hippo_rag import HippoRAG
 from agents.oracle.oracle import Oracle
 from agents.react_agent.react_agent import ReactAgent
+from agents.react_agent_custom.react_agent_custom import ReactAgentCustom
 from data.hotpot.hotpot import Hotpot
 from data.locomo.locomo import Locomo
 from data.musique.musique import MuSiQue
@@ -49,6 +50,7 @@ class Orchestrator:
             'colbertv2_rerank': ColbertV2Reranker,
             'hippo': HippoRAG,
             'react': ReactAgent,
+            'react_custom': ReactAgentCustom,
         }
 
         if args.agent not in agents:
