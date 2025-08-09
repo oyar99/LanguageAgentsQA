@@ -110,7 +110,7 @@ with content and list of doc_ids.
         if conversation_history:
             history_text = "\n".join(json.dumps(turn, indent=2)
                                      for turn in conversation_history)
-            base_prompt += f"\n\nConversation History:\n{history_text}"
+            base_prompt += f"\n\nCONVERSATION HISTORY:\n{history_text}"
 
         return base_prompt
 
@@ -158,7 +158,7 @@ with content and list of doc_ids.
 
         conversation_history = []
         sources = set()
-        max_iterations = 5
+        max_iterations = 8
         iteration = 0
         final_answer = None
 
@@ -189,70 +189,64 @@ with content and list of doc_ids.
                 "max_completion_tokens": 1000,
             }
 
-            try:
-                result = chat_completions([open_ai_request])[0][0]
-                response_content = result.choices[0].message.content.strip()
+            result = chat_completions([open_ai_request])[0][0]
+            response_content = result.choices[0].message.content.strip()
 
-                Logger().debug(f"Model response: {response_content}")
+            Logger().debug(f"Model response: {response_content}")
 
-                # Parse structured response
-                parsed_response = self._parse_structured_response(
-                    response_content)
+            # Parse structured response
+            parsed_response = self._parse_structured_response(
+                response_content)
 
-                if not parsed_response:
-                    # Fallback: treat as final answer
-                    final_answer = response_content
-                    break
-
-                # Handle the structured response
-                thought = parsed_response.get('thought', '')
-                actions = parsed_response.get('actions', [])
-                final_answer = parsed_response.get('final_answer', None)
-
-                # Add to conversation history
-                turn = {'thought': thought,
-                        'actions': actions, 'observations': []}
-
-                for action in actions:
-                    # Parse action string to extract function name and arguments
-                    action_name = None
-                    action_input = None
-
-                    if isinstance(action, str) and '(' in action and ')' in action:
-                        # Extract function name and arguments from string like "search('query')"
-                        paren_start = action.find('(')
-                        paren_end = action.rfind(')')
-
-                        action_name = action[:paren_start].strip()
-                        args_str = action[paren_start +
-                                            1:paren_end].strip()
-
-                        # Remove quotes from arguments if present
-                        if args_str.startswith(("'", '"')) and args_str.endswith(("'", '"')):
-                            action_input = args_str[1:-1]
-                        else:
-                            action_input = args_str
-
-                    if action_name and action_name.lower() == 'search':
-                        # Perform search
-                        documents, doc_ids = self._search_documents(
-                            action_input)
-
-                        # Track sources
-                        sources.update(doc_ids)
-
-                        # Create observation
-                        turn['observations'].append([
-                            doc['content']
-                            for doc in documents
-                        ])
-
-                conversation_history.append(turn)
-
-            except (json.JSONDecodeError, ValueError, RuntimeError) as e:
-                Logger().error(f"Error in ReAct iteration {iteration}: {e}")
-                final_answer = "N/A"
+            if not parsed_response:
+                # Fallback: treat as final answer
+                final_answer = response_content
                 break
+
+            # Handle the structured response
+            thought = parsed_response.get('thought', '')
+            actions = parsed_response.get('actions', [])
+            final_answer = parsed_response.get('final_answer', None)
+
+            # Add to conversation history
+            turn = {'thought': thought,
+                    'actions': actions, 'observations': []}
+
+            for action in actions:
+                # Parse action string to extract function name and arguments
+                action_name = None
+                action_input = None
+
+                if isinstance(action, str) and '(' in action and ')' in action:
+                    # Extract function name and arguments from string like "search('query')"
+                    paren_start = action.find('(')
+                    paren_end = action.rfind(')')
+
+                    action_name = action[:paren_start].strip()
+                    args_str = action[paren_start +
+                                        1:paren_end].strip()
+
+                    # Remove quotes from arguments if present
+                    if args_str.startswith(("'", '"')) and args_str.endswith(("'", '"')):
+                        action_input = args_str[1:-1]
+                    else:
+                        action_input = args_str
+
+                if action_name and action_name.lower() == 'search':
+                    # Perform search
+                    documents, doc_ids = self._search_documents(
+                        action_input)
+
+                    # Track sources
+                    sources.update(doc_ids)
+
+                    # Create observation
+                    turn['observations'].append([
+                        doc['content']
+                        for doc in documents
+                    ])
+
+            conversation_history.append(turn)
 
         if final_answer is None:
             final_answer = "N/A"
@@ -314,6 +308,8 @@ Each query needs to be optimized to maximize the probability of retrieving the m
 As such, you can rephrase the question to make it more specific or to focus on a particular aspect of the question. \
 You should then use the retrieved documents to answer the original question.
 
+## EXAMPLES:
+
 For example, consider the following question:
 
 "Were Scott Derrickson and Ed Wood of the same nationality?"
@@ -325,21 +321,20 @@ You can decompose this question into two sub-questions, and then search for rele
 "actions": ["search('Scott Derrickson nationality')", "search('Ed Wood nationality')"]\
 }
 
-In the next interaction, you will be given the search results for both queries in the "Observation" field.
+In the next iteration, you will be given the search results for both queries in the "observations" field:
 
 {\
 "thought": "I need to find the nationalities of both Scott Derrickson and Ed Wood to compare them.",\
 "actions": ["search('Scott Derrickson nationality')", "search('Ed Wood nationality')"],\
-"observations: ["Scott Derrickson is an American film director, producer, and screenwriter. He is known for his work in the horror genre, including \
-films like 'The Exorcism of Emily Rose' and 'Doctor Strange.'",
-"Ed Wood was an American filmmaker, actor, and writer, often regarded as one of the worst directors in film history. He is best known \
-for his cult classic 'Plan 9 from Outer Space.'"]\
+"observations": [["Scott Derrickson is an American film director, producer, and screenwriter. He is known for his work in the horror genre, including \
+films like 'The Exorcism of Emily Rose' and 'Doctor Strange'."], ["Ed Wood was an American filmmaker, actor, and writer, often regarded as one of the worst directors in film history. He is best known \
+for his cult classic 'Plan 9 from Outer Space'."]]\
 }
 
-You can then use the information from the observations to answer the original question.
+You can then use the information from the observations to answer the original question:
 
 {\
-"thought": "Both Scott Derrickson and Ed Wood are American, so they are of the same nationality.",\
+"thought": "Both Scott Derrickson and Ed Wood are American based on the retrieved information, so they are of the same nationality.",\
 "final_answer": "Yes"\
 }
 
@@ -347,7 +342,7 @@ Consider another example question:
 
 "In which county is Kimbrough Memorial Stadium located?"
 
-You can first search for the location of Kimbrough Memorial Stadium.
+You can first search for the location of Kimbrough Memorial Stadium:
 
 {\
 "thought": "I need to find where Kimbrough Memorial Stadium is located.",\
@@ -359,11 +354,11 @@ You will then receive the following observation:
 {\
 "thought": "I need to find where Kimbrough Memorial Stadium is located.",\
 "actions": ["search('Kimbrough Memorial Stadium location')"],\
-"observations": ["Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District, and is primarily \
-used for American football."]\
+"observations": [["Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District, and is primarily \
+used for American football."]]\
 }
 
-Then, you can search for the county of Canyon, Texas.
+Then, you can search for the county of Canyon, Texas:
 
 {\
 "thought": "The stadium is in Canyon, Texas, but I need to find which county Canyon is in.",\
@@ -375,40 +370,46 @@ You will then receive the following observation:
 {\
 "thought": "The stadium is in Canyon, Texas, but I need to find which county Canyon is in.",\
 "actions": ["search('Canyon Texas county')"],\
-"observations": ["Canyon is a city in, and the county seat of, Randall County, Texas, United States. The population was 13,303 at the 2010 census."]\
+"observations": [["Canyon is a city in, and the county seat of, Randall County, Texas, United States. The population was 13,303 at the 2010 census."]]\
 }
 
-You will then be able to answer the original question as follows:
+You will then be able to answer the original question:
 
 {\
 "thought": "Kimbrough Memorial Stadium is in Canyon, Texas, and Canyon is in Randall County.",\
 "final_answer": "Randall County"\
 }
 
-Your intermidiate responses must be in valid JSON format with the following structure.
+## RESPONSE FORMAT RULES
+
+Respond with exactly one JSON object per response and do not include any text before or after the JSON object. \
+Use either the intermediate format or the final format, never both in the same response.
+
+Your intermediate responses must be in valid JSON format with the following structure:
 
 {\
 "thought": "Your reasoning process",\
 "actions": ["search('search query')"]\
 }
 
+During intermediate responses, actions must not be empty and must contain at least one action.
+
 Your final answer must be formatted in valid JSON format with the following structure. Keep in mind that final_answer must contain \
-ONLY the answer to the question. If the answer cannot be inferred with the information found in the documents, you must then set final_answer to "N/A".
+ONLY the answer to the question. If the answer cannot be inferred with the information found in the documents, you must then set final_answer to "N/A":
 
 {\
 "thought": "Your final reasoning process",\
 "final_answer": "your final answer"\
 }
 
-The schema must adhere to the following rules:
+Ensure all string values in your JSON response have properly escaped quotes when necessary if using double quotes.
+
+The schema must also adhere to the following rules:
 
 - "thought" is a string that describes your reasoning process.
-- "action" is an array of strings that are valid python expressions that correspond to the actions you will take to answer the question. Supported actions are:
+- "actions" is an array of strings that are valid python expressions that correspond to the actions you will take to answer the question. Supported actions:
     - "search('search query')": Search for relevant documents for the given query.
 
-    List of arguments supported by the search action:
-        - "search query": The query you will use to find relevant documents. If the query contains quotes, please ensure they are properly escaped.
-
 - "final_answer" is a string that contains your final answer to the question. This field should only be included when providing your final answer. \
-If included, actions and action_input MUST NOT be included.
+If included, "actions" must not be included.
 '''
