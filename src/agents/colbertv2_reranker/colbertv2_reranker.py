@@ -84,7 +84,7 @@ class ColbertV2Reranker(Agent):
 
         Logger().info("Searching for answers to questions")
 
-        results = searcher.search_all(queries=dict(enumerate(questions)), k=10)
+        results = searcher.search_all(queries=dict(enumerate(questions)), k=30)
 
         grouped_results = {}
 
