@@ -32,7 +32,7 @@ def chat_completions(
             frequency_penalty=job["frequency_penalty"],
             presence_penalty=job["presence_penalty"],
             max_tokens=job["max_completion_tokens"],
-            stop=job["stop"],
+            stop=job.get("stop", None),
             tools=job.get("tools", None),
             tool_choice=job.get("tool_choice", None),
         )
