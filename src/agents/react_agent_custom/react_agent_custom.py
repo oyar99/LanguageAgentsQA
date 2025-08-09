@@ -148,6 +148,7 @@ with content and list of doc_ids.
             Logger().debug(f"Raw response: {response_content}")
             return None
 
+    # pylint: disable-next=too-many-locals,too-many-statements
     def reason(self, question: str) -> NoteBook:  # type: ignore
         """
         Reason over the indexed dataset to answer the question using ReAct framework
