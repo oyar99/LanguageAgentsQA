@@ -176,7 +176,7 @@ class ColbertV2Reranker(Agent):
                     document_scores[q_id][doc_idx] = 100
 
         # Filter documents based on relevance threshold and create notebooks
-        threshold = 50.0
+        threshold = 20.0
 
         for q_id, docs in grouped_results.items():
             relevant_docs = []
