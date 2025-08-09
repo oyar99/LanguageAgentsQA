@@ -11,7 +11,6 @@ from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
 from utils.model_utils import supports_temperature_param
-from utils.token_utils import get_max_output_tokens
 
 
 class ColbertV2Reranker(Agent):
@@ -38,7 +37,7 @@ class ColbertV2Reranker(Agent):
         self._corpus = self._colbertv2._corpus
         self._qa_prompt = dataset.get_prompt('qa_rel')
 
-    def reason(self, question: str) -> NoteBook:
+    def reason(self, _: str) -> NoteBook:
         """
         Reason over the indexed dataset to answer the question.
         """
@@ -49,7 +48,7 @@ class ColbertV2Reranker(Agent):
             "ColBERTV2 Reranker agent does not support single question reasoning. Use multiprocessing_reason instead."
         )
 
-    def batch_reason(self, questions: list[QuestionAnswer]) -> list[NoteBook]:
+    def batch_reason(self, _: list[QuestionAnswer]) -> list[NoteBook]:
         """
         Uses its question index to answer the questions.
 
@@ -59,7 +58,7 @@ class ColbertV2Reranker(Agent):
         raise NotImplementedError(
             "Batch reasoning is not implemented for the colbertv2 Reranker agent.")
 
-    # pylint: disable-next=too-many-locals
+    # pylint: disable-next=too-many-locals,too-many-branches,too-many-statements
     def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
         """
         Multiprocessing reason over the indexed dataset to answer the questions.
@@ -97,145 +96,149 @@ class ColbertV2Reranker(Agent):
             grouped_results[q_id].append((doc_id, score))
 
         os.makedirs(os.path.join(colbert_dir, 'tmp'), exist_ok=True)
-        rerank_results_path = os.path.join(
-            colbert_dir, 'tmp/rerank_results.jsonl')
+        relevance_results_path = os.path.join(
+            colbert_dir, 'tmp/relevance_results.jsonl')
 
-        batch = queue_batch_job([
-            {
-                "custom_id": q_id,
-                "method": "POST",
-                "url": "/chat/completions",
-                "body": {
-                    "model": self._args.model,
-                    "messages": [
-                        {"role": "system",
+        # Create batch jobs for individual document relevance evaluation
+        batch_jobs = []
+        for q_id, docs in grouped_results.items():
+            question = questions[q_id]
+            for k, (doc_id, _) in enumerate(docs):
+                doc_content = self._corpus[doc_id]['content']
+                batch_jobs.append({
+                    # Format: question_id_document_index
+                    "custom_id": f"{q_id}_{k}",
+                    "method": "POST",
+                    "url": "/chat/completions",
+                    "body": {
+                        "model": self._args.model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": RELEVANCE_AGENT_PROMPT.format(content=doc_content)
+                            },
+                            {
+                                "role": "user",
+                                "content": question
+                            }
+                        ],
+                        "temperature": (default_job_args['temperature']
+                                        if supports_temperature_param(self._args.model) else None),
+                        "frequency_penalty": default_job_args['frequency_penalty'],
+                        "presence_penalty": default_job_args['presence_penalty'],
+                        "max_completion_tokens": 10,  # Only need a relevance score
+                    }
+                })
 
-                         "content": RERANKER_PROMPT.format(
-                             documents=str([self._corpus[d_id]['content'] for d_id, _ in docs]))},
-                        {"role": "user", "content": questions[q_id]}
-                    ],
-                    "temperature": (default_job_args['temperature']
-                                    if supports_temperature_param(self._args.model) else None),
-                    "frequency_penalty": default_job_args['frequency_penalty'],
-                    "presence_penalty": default_job_args['presence_penalty'],
-                    "max_completion_tokens": int(get_max_output_tokens(self._args.model))
-                },
-            }
-            for q_id, docs in grouped_results.items()
-        ])
+        batch = queue_batch_job(batch_jobs)
 
         # pylint: enable=duplicate-code
         Logger().info("Waiting for batch job to finish")
 
-        wait_for_batch_job_and_save_result(batch, rerank_results_path)
+        wait_for_batch_job_and_save_result(batch, relevance_results_path)
 
         notebooks_dict = {}
 
-        with open(rerank_results_path, 'r', encoding='utf-8') as file:
+        # Collect relevance scores for each document per question
+        document_scores = {}  # {q_id: {doc_index: relevance_score}}
+
+        with open(relevance_results_path, 'r', encoding='utf-8') as file:
             for line in file:
                 result = json.loads(line)
-                q_id = result['custom_id']
+                custom_id = result['custom_id']
 
-                new_ranking = None
-
+                # Parse custom_id to get question_id and document_index
                 try:
-                    # Extract only the last line of the response content
-                    last_line = next(
-                        (line for line in
-                         reversed(
-                             result['response']['body']['choices'][0]['message']['content'].strip().split('\n'))
-                         if line.startswith('[')), None)
+                    q_id, doc_idx = custom_id.split('_')
+                    q_id = int(q_id)
+                    doc_idx = int(doc_idx)
+                except ValueError:
+                    Logger().error(f"Invalid custom_id format: {custom_id}")
+                    continue
 
-                    candidate_ranking = json.loads(
-                        last_line) if last_line else None
+                if q_id not in document_scores:
+                    document_scores[q_id] = {}
 
-                    # Validate candidate_ranking
-                    if (isinstance(candidate_ranking, list) and
-                            len(candidate_ranking) == 10 and
-                            sorted(candidate_ranking) == list(range(1, 11))):
-                        new_ranking = candidate_ranking
-                        if candidate_ranking != list(range(1, 11)):
-                            Logger().info(
-                                f"New ranking for question ID {q_id}: {new_ranking}")
-                    else:
-                        Logger().warn(
-                            f"Invalid ranking format for question ID {q_id}: {candidate_ranking}")
-                        Logger().info("Use the original ranking")
-                        new_ranking = list(range(1, 11))
-                except json.JSONDecodeError:
-                    Logger().warn(
-                        f"Failed to decode JSON response for question ID {q_id}: \
-{result['response']['body']['choices'][0]['message']['content']}")
-                    Logger().info("Use the original ranking")
-                    new_ranking = list(range(1, 11))
-
-                ranked_docs = [grouped_results[q_id][rank-1]
-                               for rank in new_ranking]
-
-                retrieved_results = [
-                    RetrievedResult(
-                        doc_id=self._corpus[doc_id]['doc_id'],
-                        content=self._corpus[doc_id]['content'],
-                        score=score
+                # Extract relevance score from response
+                try:
+                    score_text = result['response']['body']['choices'][0]['message']['content'].strip(
                     )
-                    for doc_id, score in ranked_docs[:5]
-                ]
+                    relevance_score = int(score_text)
+                    # Ensure score is between 0 and 100
+                    relevance_score = max(0, min(100, relevance_score))
+                    document_scores[q_id][doc_idx] = relevance_score
+                    Logger().debug(
+                        f"Document {doc_idx} for question {q_id}: relevance score {relevance_score}")
+                except (ValueError, KeyError) as e:
+                    Logger().warning(
+                        f"Failed to parse relevance score for {custom_id}: {e}")
+                    # Assume relevant if parsing fails
+                    document_scores[q_id][doc_idx] = 100
 
-                notebook = NoteBook()
-                notebook.update_sources(retrieved_results)
+        # Filter documents based on relevance threshold and create notebooks
+        threshold = 50.0
 
-                notes = self._qa_prompt.format(
-                    context='\n'.join(
-                        doc['content']
-                        for doc in retrieved_results)
+        for q_id, docs in grouped_results.items():
+            relevant_docs = []
+
+            if q_id in document_scores:
+                for doc_idx, (doc_id, score) in enumerate(docs):
+                    relevance_score = document_scores[q_id].get(
+                        doc_idx, 100)  # Default to relevant
+
+                    if relevance_score >= threshold:
+                        relevant_docs.append((doc_id, score))
+            else:
+                # If no relevance scores available, use all documents
+                relevant_docs = grouped_results[q_id]
+                Logger().warning(
+                    f"No relevance scores found for question {q_id}, using all documents")
+
+            if len(relevant_docs) == 0:
+                Logger().warning(
+                    f"No relevant documents found for question {q_id} after applying relevance \
+threshold. Using top document.")
+                # If no documents are relevant, use the top document
+                relevant_docs.append(docs[0])
+
+            retrieved_results = [
+                RetrievedResult(
+                    doc_id=self._corpus[doc_id]['doc_id'],
+                    content=self._corpus[doc_id]['content'],
+                    score=score
                 )
+                for doc_id, score in relevant_docs
+            ]
 
-                notebook.update_notes(notes)
-                notebooks_dict[int(q_id)] = notebook
+            notebook = NoteBook()
+            notebook.update_sources(retrieved_results)
+
+            notes = self._qa_prompt.format(
+                context='\n'.join(
+                    result['content'] for result in retrieved_results)
+            )
+
+            notebook.update_notes(notes)
+            notebooks_dict[q_id] = notebook
 
         return [notebooks_dict[key] for key in sorted(notebooks_dict.keys())]
 
 
 default_job_args = {
     'temperature': 0.0,
-    'max_completion_tokens': 100,
+    'max_completion_tokens': 10,
     'frequency_penalty': 0.0,
     'presence_penalty': 0.0
 }
 
 
-RERANKER_PROMPT = '''You are tasked with re-ranking 10 documents based on their relevance to a given question.\
-The documents are initially ranked using the ColBERTV2 model.
+RELEVANCE_AGENT_PROMPT = '''You are a helpful assistant that evaluates the relevance of search \
+results to a given query. Your task is to provide a relevance score \
+between 0 and 100, where 0 means not relevant at all and 100 means highly relevant and can help answer the query.
 
-Your response should be a valid JSON array of numbers from 1 to 10, where:
+The relevance score should be based on the content of the document and how well it matches the query.
 
-- Each number appears exactly once.\n
-- Each number corresponds to the position of a document in the original ranking.\n
-- The position of each number in the array represents the new rank of the document.\n
-- The number at the first position is the most relevant document, and the number at the last position is the least relevant.\n
+Your response should be a single integer value representing the relevance score. Do not include any additional text or explanation.
 
-For example, given the following documents:
-
-["France is a country in Europe.", \
-"Paris is the capital of France.", \
-"Berlin is the capital of Germany.", \
-"London is the capital of the UK.", \
-"Rome is the capital of Italy.",  \
-"Spain is a country in Europe.", \
-"Paris is one of the largest capitals in Europe.", \
-"The Eiffel Tower is in Paris.", \
-"France is known for its wine.", \
-"Germany is known for its beer."],
-
-and the question "What is the capital of France?", your response should be:
-
-[2, 7, 1, 8, 9, 3, 4, 5, 6, 10]
-
-Let us think step by step.
-
-Finally, the last line of your response should be a valid JSON array of numbers.
-
-Below are the documents for re-ranking.
-
-{documents}
+Document: {content}
 '''

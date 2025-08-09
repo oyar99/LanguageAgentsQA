@@ -12,6 +12,7 @@ from models.agent import Agent, NoteBook
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
+from plugins.search_pruner import search_pruner
 from utils.model_utils import supports_temperature_param
 
 
@@ -65,7 +66,7 @@ class ReactAgentCustom(Agent):
             self._searcher = Searcher(index=self._index, collection=[
                 doc['content'] for doc in self._corpus])
 
-    def _search_documents(self, query: str) -> tuple[List[Dict[str, Any]], List[int]]:
+    def _search_documents(self, query: str, context: str = "", enable_pruning=True) -> tuple[List[Dict[str, Any]], List[int]]:
         """
         Search for documents using the ColBERT retriever.
 
@@ -88,12 +89,28 @@ with content and list of doc_ids.
             documents.append({
                 'doc_id': self._corpus[doc_id]['doc_id'],
                 'content': self._corpus[doc_id]['content'],
-                'score': score
+                'score': score,
+                'original_id': doc_id
             })
 
         Logger().debug(
             f"Search results for query '{query}': Found {len(documents)} documents")
-        return documents, doc_ids
+
+        if not enable_pruning:
+            return documents, doc_ids
+
+        pruned_documents = search_pruner(query, documents, context)
+
+        Logger().debug(
+            f"Search results for query '{query}': Found {len(pruned_documents)} documents after pruning")
+
+        if len(pruned_documents) == 0:
+            Logger().warn(f"No relevant documents found for query: {query}")
+            pruned_documents = documents[:1]
+
+        doc_ids = [doc['original_id'] for doc in pruned_documents]
+
+        return pruned_documents, doc_ids
 
     def _create_react_prompt(self, conversation_history: List[Dict[str, str]] = None) -> str:
         """
@@ -224,7 +241,7 @@ with content and list of doc_ids.
 
                     action_name = action[:paren_start].strip()
                     args_str = action[paren_start +
-                                        1:paren_end].strip()
+                                      1:paren_end].strip()
 
                     # Remove quotes from arguments if present
                     if args_str.startswith(("'", '"')) and args_str.endswith(("'", '"')):
@@ -235,7 +252,7 @@ with content and list of doc_ids.
                 if action_name and action_name.lower() == 'search':
                     # Perform search
                     documents, doc_ids = self._search_documents(
-                        action_input)
+                        action_input, context=thought, enable_pruning=True)
 
                     # Track sources
                     sources.update(doc_ids)

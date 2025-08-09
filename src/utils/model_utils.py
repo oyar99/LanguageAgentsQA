@@ -14,6 +14,7 @@ def supports_temperature_param(model: str) -> bool:
     # Models that support temperature parameter
     models_with_temp = [
         'gpt-4o-mini',
+        'gpt-4o-mini-2',
         'gpt-4o-mini-batch',
         'Qwen/Qwen2.5-14B-Instruct',
     ]
