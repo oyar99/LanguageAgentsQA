@@ -260,8 +260,8 @@ with content and list of doc_ids.
 
                 if action_name and action_name.lower() == 'search':
                     # Perform search
-                    documents, doc_ids, search_usage_metrics = self._search_documents(searcher,
-                                                                                      action_input, context=thought, enable_pruning=True)
+                    documents, doc_ids, search_usage_metrics = self._search_documents(
+                        searcher, action_input, context=thought, enable_pruning=True)
 
                     # Update usage metrics
                     usage_metrics["completion_tokens"] += search_usage_metrics.get(
