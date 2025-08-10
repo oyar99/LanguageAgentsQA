@@ -2,7 +2,7 @@
 import argparse
 from dotenv import load_dotenv
 
-from logger.logger import Logger, MainProcessLogger
+from logger.logger import Logger
 from orchestrator.orchestrator import Orchestrator
 
 

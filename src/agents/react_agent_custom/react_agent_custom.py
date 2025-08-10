@@ -3,12 +3,11 @@
 # pylint: disable=duplicate-code
 import json
 import os
-from multiprocessing import Pool, Value, cpu_count
 from typing import Dict, List, Any, Optional
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
 from azure_open_ai.chat_completions import chat_completions
-from logger.logger import Logger, MainProcessLogger, worker_init
+from logger.logger import Logger
 from models.agent import Agent, NoteBook
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
@@ -262,7 +261,7 @@ with content and list of doc_ids.
                 if action_name and action_name.lower() == 'search':
                     # Perform search
                     documents, doc_ids, search_usage_metrics = self._search_documents(searcher,
-                        action_input, context=thought, enable_pruning=True)
+                                                                                      action_input, context=thought, enable_pruning=True)
 
                     # Update usage metrics
                     usage_metrics["completion_tokens"] += search_usage_metrics.get(
@@ -311,6 +310,7 @@ with content and list of doc_ids.
         """
         raise NotImplementedError(
             "Batch reasoning is not implemented for the ReactAgentCustom.")
+
 
 # Default job arguments
 default_job_args = {
