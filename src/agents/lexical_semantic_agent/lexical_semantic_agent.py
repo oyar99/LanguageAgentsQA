@@ -369,7 +369,8 @@ default_job_args = {
     'presence_penalty': 0.0
 }
 
-LEXICAL_SEMANTIC_AGENT_PROMPT = '''You are an intelligent search agent that can choose between two search methods to find relevant documents: lexical search and semantic search.
+LEXICAL_SEMANTIC_AGENT_PROMPT = '''You are an intelligent search agent that can choose between two search methods
+to find relevant documents: lexical search and semantic search.
 
 ## AVAILABLE TOOLS:
 
