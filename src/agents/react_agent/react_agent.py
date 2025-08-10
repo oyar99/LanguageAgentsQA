@@ -179,6 +179,11 @@ for a given query orderd by relevance, using a dense retriever.",
         finish_reason = None
         sources = set()
         iteration = 0
+        usage_metrics = {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0
+        }
 
         while finish_reason != "stop":
             iteration += 1
@@ -194,6 +199,11 @@ for a given query orderd by relevance, using a dense retriever.",
             ])[0][0]
 
             Logger().debug(f"Chat completion response: {result}")
+
+            # update usage metrics
+            usage_metrics["completion_tokens"] += result.usage.completion_tokens
+            usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
+            usage_metrics["total_tokens"] += result.usage.total_tokens
 
             messages.append(result.choices[0].message)
 
@@ -214,6 +224,7 @@ for a given query orderd by relevance, using a dense retriever.",
             for doc_id in sources
         ])
         notebook.update_notes(answer)
+        notebook.update_usage_metrics(usage_metrics)
 
         return notebook
 

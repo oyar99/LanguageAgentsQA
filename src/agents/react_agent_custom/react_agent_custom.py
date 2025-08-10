@@ -71,7 +71,7 @@ class ReactAgentCustom(Agent):
             query: str,
             context: str = "",
             enable_pruning=True
-    ) -> tuple[List[Dict[str, Any]], List[int]]:
+    ) -> tuple[List[Dict[str, Any]], List[int], Dict[str, int]]:
         """
         Search for documents using the ColBERT retriever.
 
@@ -102,9 +102,10 @@ with content and list of doc_ids.
             f"Search results for query '{query}': Found {len(documents)} documents")
 
         if not enable_pruning:
-            return documents, doc_ids
+            return documents, doc_ids, {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
-        pruned_documents = search_pruner(query, documents, context)
+        pruned_documents, usage_metrics = search_pruner(
+            query, documents, context)
 
         Logger().debug(
             f"Search results for query '{query}': Found {len(pruned_documents)} documents after pruning")
@@ -115,7 +116,7 @@ with content and list of doc_ids.
 
         doc_ids = [doc['original_id'] for doc in pruned_documents]
 
-        return pruned_documents, doc_ids
+        return pruned_documents, doc_ids, usage_metrics
 
     def _create_react_prompt(self, conversation_history: List[Dict[str, str]] = None) -> str:
         """
@@ -183,6 +184,11 @@ with content and list of doc_ids.
         max_iterations = 8
         iteration = 0
         final_answer = None
+        usage_metrics = {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0
+        }
 
         while iteration < max_iterations and final_answer is None:
             iteration += 1
@@ -212,6 +218,12 @@ with content and list of doc_ids.
             }
 
             result = chat_completions([open_ai_request])[0][0]
+
+            # Update usage metrics
+            usage_metrics["completion_tokens"] += result.usage.completion_tokens
+            usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
+            usage_metrics["total_tokens"] += result.usage.total_tokens
+
             response_content = result.choices[0].message.content.strip()
 
             Logger().debug(f"Model response: {response_content}")
@@ -256,8 +268,16 @@ with content and list of doc_ids.
 
                 if action_name and action_name.lower() == 'search':
                     # Perform search
-                    documents, doc_ids = self._search_documents(
+                    documents, doc_ids, search_usage_metrics = self._search_documents(
                         action_input, context=thought, enable_pruning=True)
+
+                    # Update usage metrics
+                    usage_metrics["completion_tokens"] += search_usage_metrics.get(
+                        "completion_tokens", 0)
+                    usage_metrics["prompt_tokens"] += search_usage_metrics.get(
+                        "prompt_tokens", 0)
+                    usage_metrics["total_tokens"] += search_usage_metrics.get(
+                        "total_tokens", 0)
 
                     # Track sources
                     sources.update(doc_ids)
@@ -285,6 +305,7 @@ with content and list of doc_ids.
             for doc_id in sources
         ])
         notebook.update_notes(final_answer)
+        notebook.update_usage_metrics(usage_metrics)
 
         return notebook
 

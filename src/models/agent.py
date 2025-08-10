@@ -17,6 +17,7 @@ class NoteBook:
         self._sources = []
         self._notes = None
         self._questions = None
+        self._usage_metrics = {}
 
     def update_notes(self, notes: str) -> None:
         """
@@ -72,6 +73,24 @@ class NoteBook:
         """
         return self._questions
 
+    def update_usage_metrics(self, metrics: dict) -> None:
+        """
+        Updates the notebook with the given usage metrics.
+
+        Args:
+            metrics (dict): the usage metrics to be added to the notebook
+        """
+        self._usage_metrics = metrics
+
+    def get_usage_metrics(self) -> dict:
+        """
+        Gets the usage metrics from the notebook.
+
+        Returns:
+            dict: the usage metrics in the notebook
+        """
+        return self._usage_metrics
+
 
 class Agent(ABC):
     """
@@ -87,7 +106,8 @@ class Agent(ABC):
         - Iterate on the plan as needed
 
     Finally the agent will return a detailed notebook with its findings for this question so another language
-    agent can answers all questions in bulk.
+    agent can answers all questions in bulk. Alternatively, the agent can also be a self-contained agent that
+    answers the question directly.
 
     Args:
         ABC: an abstract base class

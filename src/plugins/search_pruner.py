@@ -1,13 +1,18 @@
 """search_pruner.py
 This module provides functionality to prune search results based on a relevance threshold.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
 
 
-def search_pruner(query: str, documents: List[Dict[str, Any]], thought: str, threshold=50.0) -> List[Dict[str, Any]]:
+def search_pruner(
+        query: str, 
+        documents: List[Dict[str, Any]], 
+        thought: str, 
+        threshold=50.0
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """
     Prune search results based on a relevance threshold if the result is relevant to the query and thought.
 
@@ -21,17 +26,26 @@ def search_pruner(query: str, documents: List[Dict[str, Any]], thought: str, thr
         list: Pruned list of document IDs that meet the relevance threshold.
     """
     pruned_results = []
+    usage_metrics = {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+    }
 
     for doc in documents:
-        relevance_score = _calculate_relevance(query, doc['content'], thought)
+        relevance_score, usage_metrics_loc = _calculate_relevance(query, doc['content'], thought)
+
+        usage_metrics["completion_tokens"] += usage_metrics_loc["completion_tokens"]
+        usage_metrics["prompt_tokens"] += usage_metrics_loc["prompt_tokens"]
+        usage_metrics["total_tokens"] += usage_metrics_loc["total_tokens"]
 
         if relevance_score >= threshold:
             pruned_results.append(doc)
 
-    return pruned_results
+    return (pruned_results, usage_metrics)
 
 
-def _calculate_relevance(query: str, content: str, thought: str) -> float:
+def _calculate_relevance(query: str, content: str, thought: str) -> Tuple[float, Dict[str, int]]:
     """
     Calculate a relevance score for the given query and content using an LLM agent.
 
@@ -71,7 +85,11 @@ def _calculate_relevance(query: str, content: str, thought: str) -> float:
         # Assuming invalid scores should be treated as relevant
         return 100.0
 
-    return max(0.0, min(100.0, score))
+    return (max(0.0, min(100.0, score)), {
+        "completion_tokens": result.usage.completion_tokens,
+        "prompt_tokens": result.usage.prompt_tokens,
+        "total_tokens": result.usage.total_tokens
+    })
 
 
 # Default job arguments

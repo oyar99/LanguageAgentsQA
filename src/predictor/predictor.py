@@ -50,9 +50,12 @@ Please provide the model deployment identifier using the -m flag.""")
             Logger().info(
                 f"Batch job queued with ID: {batch.id} and status: {batch.status}")
 
-            wait_for_batch_job_and_save_result(batch, get_qa_output_path(str(i)))
+            wait_for_batch_job_and_save_result(
+                batch, get_qa_output_path(str(i)))
 
 # pylint: disable-next=too-many-locals
+
+
 def question_answering(dataset: Dataset, agent: Agent, args) -> Optional[list[Batch]]:
     """
     Generates predictions for the given dataset using the specified agent.
@@ -90,7 +93,12 @@ def question_answering(dataset: Dataset, agent: Agent, args) -> Optional[list[Ba
                                         "content": result.get_notes()
                                     }
                                 }
-                            ]
+                            ],
+                            "usage": result.get_usage_metrics() or {
+                                "completion_tokens": 0,
+                                "prompt_tokens": 0,
+                                "total_tokens": 0
+                            }
                         }
                     }
                 }
