@@ -55,14 +55,7 @@ class ReactAgent(Agent):
         self._corpus = corpus
         Logger().info("Successfully indexed documents")
 
-        colbert_dir = os.path.join(os.path.normpath(
-            os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
-
-        with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
-            self._searcher = Searcher(index=self._index, collection=[
-                doc['content'] for doc in self._corpus])
-
-    def _search_documents(self, query: str) -> tuple[list[RetrievedResult], list[int]]:
+    def _search_documents(self, query: str, searcher: Searcher) -> tuple[list[RetrievedResult], list[int]]:
         """
         Search for documents using the ColBERT retriever.
 
@@ -72,7 +65,7 @@ class ReactAgent(Agent):
         Returns:
             tuple[list[RetrievedResult], list[int]]: Tuple containing list of retrieved documents and list of doc_ids.
         """
-        doc_ids, _ranking, scores = self._searcher.search(
+        doc_ids, _ranking, scores = searcher.search(
             query, k=self._args.k or 5)
 
         documents = [RetrievedResult(
@@ -140,7 +133,7 @@ for a given query orderd by relevance, using a dense retriever.",
             }
         ]
 
-    def _process_tool_calls(self, tool_calls, messages: list, sources: set):
+    def _process_tool_calls(self, tool_calls, messages: list, sources: set, searcher: Searcher):
         """
         Process tool calls from the model response.
 
@@ -154,7 +147,7 @@ for a given query orderd by relevance, using a dense retriever.",
                 function_args = json.loads(tool_call.function.arguments)
                 query = function_args.get("query")
 
-                documents, doc_ids = self._search_documents(query)
+                documents, doc_ids = self._search_documents(query, searcher=searcher)
 
                 sources.update(doc_ids)
 
@@ -172,6 +165,13 @@ for a given query orderd by relevance, using a dense retriever.",
         """
         Reason over the indexed dataset to answer the question.
         """
+        colbert_dir = os.path.join(os.path.normpath(
+            os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
+
+        with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
+            searcher = Searcher(index=self._index, collection=[
+                doc['content'] for doc in self._corpus])
+
         open_ai_requests = self._create_initial_request(question)
         messages = open_ai_requests[0]["body"]["messages"]
 
@@ -211,7 +211,7 @@ for a given query orderd by relevance, using a dense retriever.",
             finish_reason = result.choices[0].finish_reason
 
             if tool_calls:
-                self._process_tool_calls(tool_calls, messages, sources)
+                self._process_tool_calls(tool_calls, messages, sources, searcher=searcher)
 
         answer = result.choices[0].message.content.strip()
 
@@ -237,18 +237,6 @@ for a given query orderd by relevance, using a dense retriever.",
         """
         raise NotImplementedError(
             "Batch reasoning is not implemented for the ReactAgent.")
-
-    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
-        """
-        Reason over the indexed dataset to answer the question.
-        """
-        notebooks = []
-
-        for question in questions:
-            notebook = self.reason(question)
-            notebooks.append(notebook)
-
-        return notebooks
 
 
 default_job_args = {

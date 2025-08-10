@@ -93,11 +93,6 @@ class LexicalSemanticAgent(Agent):
 
         self._index = dataset.name or 'index'
 
-        # Initialize searcher
-        with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
-            self._colbert_searcher = Searcher(index=self._index, collection=[
-                doc['content'] for doc in corpus])
-
     def _search_lexical(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """
         Perform BM25 lexical search.
@@ -138,7 +133,7 @@ class LexicalSemanticAgent(Agent):
 
         return documents
 
-    def _search_semantic(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+    def _search_semantic(self, query: str, searcher: Searcher, k: int = 5) -> List[Dict[str, Any]]:
         """
         Perform ColBERT semantic search.
 
@@ -149,11 +144,7 @@ class LexicalSemanticAgent(Agent):
         Returns:
             List[Dict[str, Any]]: Retrieved documents with scores.
         """
-        if not self._colbert_searcher:
-            Logger().warn("ColBERT searcher not available, falling back to lexical search")
-            return self._search_lexical(query, k)
-
-        doc_ids, _ranking, scores = self._colbert_searcher.search(query, k=k)
+        doc_ids, _ranking, scores = searcher.search(query, k=k)
 
         documents = []
         for doc_id, _, score in zip(doc_ids, _ranking, scores):
@@ -223,9 +214,16 @@ class LexicalSemanticAgent(Agent):
         """
         Logger().debug(f"Starting reasoning for question: {question}")
 
-        if not self._bm25_index or not self._colbert_searcher:
+        if not self._bm25_index:
             raise ValueError(
                 "Indexes not initialized. Please index the dataset first.")
+
+        colbert_dir = os.path.join(os.path.normpath(
+            os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
+
+        with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
+            searcher = Searcher(index=self._index, collection=[
+                doc['content'] for doc in self._corpus])
 
         conversation_history = []
         sources: Set[int] = set()
@@ -322,7 +320,7 @@ class LexicalSemanticAgent(Agent):
                             f"Lexical search for '{action_input}': {len(documents)} results")
                     else:  # search_semantic
                         documents = self._search_semantic(
-                            action_input, k=self._args.k or 5)
+                            action_input, searcher=searcher, k=self._args.k or 5)
                         Logger().debug(
                             f"Semantic search for '{action_input}': {len(documents)} results")
 
@@ -363,18 +361,6 @@ class LexicalSemanticAgent(Agent):
         """
         raise NotImplementedError(
             "Batch reasoning is not implemented for the LexicalSemanticAgent.")
-
-    def multiprocessing_reason(self, questions: List[str]) -> List[NoteBook]:
-        """
-        Reason over the indexed dataset to answer multiple questions.
-        """
-        notebooks = []
-
-        for question in questions:
-            notebook = self.reason(question)
-            notebooks.append(notebook)
-
-        return notebooks
 
 
 # Default job arguments
