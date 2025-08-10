@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from multiprocessing import Pool, cpu_count
 from typing import Optional
+from logger.logger import MainProcessLogger, worker_init
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
@@ -176,7 +177,7 @@ class Agent(ABC):
             notebook (list[Notebook]): the detailed findings to help answer all questions (context)
         """
         results = []
-        with Pool(min(4, cpu_count())) as pool:
+        with Pool(min(24, cpu_count()), worker_init, [MainProcessLogger().get_queue()]) as pool:
             results = pool.map(self.reason, questions)
 
         return results

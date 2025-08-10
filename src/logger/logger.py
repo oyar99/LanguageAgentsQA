@@ -1,39 +1,24 @@
 """Logger module."""
 import logging
+from logging.handlers import QueueHandler, QueueListener
+from multiprocessing import Queue
 import os
 import uuid
+from abc import ABC
 
 from utils.singleton import Singleton
 
 
-class Logger(metaclass=Singleton):
+class BaseLogger(ABC, metaclass=Singleton):
     """
-    A logger to log messages to both console and file.
-    This class is a singleton, meaning that only one instance of it can exist at a time.
+    A base logger abstract class to define the interface for logging.
     """
 
     def __init__(self):
-        self._logger = logging.getLogger(__name__)
-        log_level = os.getenv("SCRIPT_LOG_LEVEL", "INFO").upper()
-        self._logger.setLevel(level=log_level)
         self._run_id = str(uuid.uuid4())
-
-        # Create console handler
-        ch = logging.StreamHandler()
-        ch.setLevel(log_level)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s')
-        ch.setFormatter(formatter)
-        # self._logger.addHandler(ch)
-
-        # Create file handler
-        log_dir = os.path.join(os.path.normpath(
-            os.getcwd() + os.sep + os.pardir), 'logs')
-        log_fname = os.path.join(log_dir, f'app-{self._run_id}.log')
-        fh = logging.FileHandler(log_fname, encoding='utf-8')
-        fh.setLevel(log_level)
-        fh.setFormatter(formatter)
-        self._logger.addHandler(fh)
+        self._logger = logging.getLogger(__name__)
+        self._log_level = os.getenv("SCRIPT_LOG_LEVEL", "INFO").upper()
+        self._logger.setLevel(level=self._log_level)
 
     def info(self, message: str) -> None:
         """
@@ -79,3 +64,74 @@ class Logger(metaclass=Singleton):
             run_id (str): run id
         """
         return self._run_id
+
+
+class MainProcessLogger(BaseLogger):
+    """
+    A logger to send log messages to the queue
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        # Create console handler
+        ch = logging.StreamHandler()
+        ch.setLevel(self._log_level)
+        formatter = logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(message)s')
+        ch.setFormatter(formatter)
+
+        # Create file handler
+        log_dir = os.path.join(os.path.normpath(
+            os.getcwd() + os.sep + os.pardir), 'logs')
+
+        log_fname = os.path.join(log_dir, f'app-{self._run_id}.log')
+        fh = logging.FileHandler(log_fname, encoding='utf-8')
+        fh.setLevel(self._log_level)
+        fh.setFormatter(formatter)
+
+        self._q = Queue(-1)
+
+        self._ql = QueueListener(self._q, fh, ch)
+        self._ql.start()
+
+    def get_queue(self) -> Queue:
+        """
+        Gets the queue used by the logger.
+
+        Returns:
+            Queue: the queue used by the logger
+        """
+        return self._q
+
+    def get_queue_listener(self) -> QueueListener:
+        """
+        Gets the queue listener used by the logger.
+
+        Returns:
+            QueueListener: the queue listener used by the logger
+        """
+        return self._ql
+
+
+class Logger(BaseLogger):
+    """
+    A logger to log messages to a queue.
+    """
+
+    def __init__(self, q: Queue = None):
+        super().__init__()
+        # If the queue is not provided, we assume consumer intends to use the main process logger
+        # Sub-processes should not use the main process logger, and should always ensure they provide a queue by using
+        # helper function worker_init
+        queue = q if q is not None else MainProcessLogger().get_queue()
+
+        qh = QueueHandler(queue)
+
+        self._logger.addHandler(qh)
+
+def worker_init(q: Queue):
+    """
+    Initializes the worker logger with a unique run ID.
+    """
+    Logger(q)

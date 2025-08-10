@@ -3,11 +3,12 @@
 # pylint: disable=duplicate-code
 import json
 import os
+from multiprocessing import Pool, Value, cpu_count
 from typing import Dict, List, Any, Optional
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
 from azure_open_ai.chat_completions import chat_completions
-from logger.logger import Logger
+from logger.logger import Logger, MainProcessLogger, worker_init
 from models.agent import Agent, NoteBook
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
@@ -58,16 +59,9 @@ class ReactAgentCustom(Agent):
         self._corpus = corpus
         Logger().info("Successfully indexed documents")
 
-        # Initialize searcher
-        colbert_dir = os.path.join(os.path.normpath(
-            os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
-
-        with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
-            self._searcher = Searcher(index=self._index, collection=[
-                doc['content'] for doc in self._corpus])
-
     def _search_documents(
             self,
+            searcher: Searcher,
             query: str,
             context: str = "",
             enable_pruning=True
@@ -82,11 +76,7 @@ class ReactAgentCustom(Agent):
             tuple[List[Dict[str, Any]], List[int]]: Tuple containing list of retrieved documents 
 with content and list of doc_ids.
         """
-        if not self._searcher:
-            raise ValueError(
-                "Searcher not initialized. Please index the dataset first.")
-
-        doc_ids, _ranking, scores = self._searcher.search(
+        doc_ids, _ranking, scores = searcher.search(
             query, k=self._args.k or 5)
 
         documents = []
@@ -175,9 +165,12 @@ with content and list of doc_ids.
         """
         Logger().debug(f"Starting reasoning for question: {question}")
 
-        if not self._searcher:
-            raise ValueError(
-                "Searcher not initialized. Please index the dataset first.")
+        colbert_dir = os.path.join(os.path.normpath(
+            os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
+
+        with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
+            searcher = Searcher(index=self._index, collection=[
+                doc['content'] for doc in self._corpus])
 
         conversation_history = []
         sources = set()
@@ -268,7 +261,7 @@ with content and list of doc_ids.
 
                 if action_name and action_name.lower() == 'search':
                     # Perform search
-                    documents, doc_ids, search_usage_metrics = self._search_documents(
+                    documents, doc_ids, search_usage_metrics = self._search_documents(searcher,
                         action_input, context=thought, enable_pruning=True)
 
                     # Update usage metrics
@@ -318,19 +311,6 @@ with content and list of doc_ids.
         """
         raise NotImplementedError(
             "Batch reasoning is not implemented for the ReactAgentCustom.")
-
-    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
-        """
-        Reason over the indexed dataset to answer multiple questions.
-        """
-        notebooks = []
-
-        for question in questions:
-            notebook = self.reason(question)
-            notebooks.append(notebook)
-
-        return notebooks
-
 
 # Default job arguments
 default_job_args = {
