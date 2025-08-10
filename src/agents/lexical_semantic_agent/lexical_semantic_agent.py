@@ -7,10 +7,6 @@ based on the nature of the query, following ReAct framework with manual tool inv
 import json
 import os
 from typing import Dict, List, Any, Optional, Set
-try:
-    import spacy
-except ImportError:
-    spacy = None
 
 from rank_bm25 import BM25Okapi as BM25Ranker
 
@@ -46,21 +42,10 @@ class LexicalSemanticAgent(Agent):
         self._corpus = None
         self._bm25_index = None
         self._colbert_searcher = None
-        self._nlp = None
         self._args = args
         super().__init__(args)
 
         self.standalone = True
-        # Initialize spaCy for named entity recognition
-        if spacy:
-            try:
-                self._nlp = spacy.load("en_core_web_sm")
-            except OSError:
-                Logger().warn("spaCy English model not found, falling back to simple heuristics")
-                self._nlp = None
-        else:
-            Logger().warn("spaCy not available, using simple heuristics for entity detection")
-            self._nlp = None
 
     def index(self, dataset: Dataset) -> None:
         """
@@ -126,49 +111,7 @@ class LexicalSemanticAgent(Agent):
             self._colbert_searcher = Searcher(index=self._index, collection=[
                 doc['content'] for doc in corpus])
 
-    def _detect_named_entities(self, query: str) -> bool:
-        """
-        Detect if query contains named entities that would benefit from lexical search.
-        
-        Args:
-            query (str): The search query.
 
-        Returns:
-            bool: True if query contains named entities, False otherwise.
-        """
-        if self._nlp:
-            # Use spaCy for named entity recognition
-            doc = self._nlp(query)
-            named_entities = [ent for ent in doc.ents
-                            if ent.label_ in {"PERSON", "ORG", "GPE", "PRODUCT", "WORK_OF_ART"}]
-            return len(named_entities) > 0
-
-        # Fall back to simple heuristics
-        return self._simple_entity_detection(query)
-
-    def _simple_entity_detection(self, query: str) -> bool:
-        """
-        Simple heuristic-based named entity detection.
-        
-        Args:
-            query (str): The search query.
-
-        Returns:
-            bool: True if query likely contains named entities.
-        """
-        words = query.split()
-        capitalized_words = 0
-
-        for i, word in enumerate(words):
-            # Skip first word and words after punctuation
-            if i == 0 or words[i-1].endswith('.'):
-                continue
-            # Check if word is capitalized (likely proper noun)
-            if word[0].isupper() and len(word) > 1:
-                capitalized_words += 1
-
-        # If multiple capitalized words, likely contains named entities
-        return capitalized_words >= 1
 
     def _search_lexical(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """
