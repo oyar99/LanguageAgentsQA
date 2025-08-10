@@ -9,18 +9,8 @@ import os
 from typing import Dict, List, Any, Optional, Set
 
 from rank_bm25 import BM25Okapi as BM25Ranker
-
-try:
-    from colbert.infra import Run, RunConfig, ColBERTConfig
-    from colbert import Indexer, Searcher
-    COLBERT_AVAILABLE = True
-except ImportError:
-    COLBERT_AVAILABLE = False
-    Run = None
-    RunConfig = None
-    ColBERTConfig = None
-    Indexer = None
-    Searcher = None
+from colbert.infra import Run, RunConfig, ColBERTConfig
+from colbert import Indexer, Searcher
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
 from models.agent import Agent, NoteBook
@@ -85,9 +75,6 @@ class LexicalSemanticAgent(Agent):
 
     def _index_colbert(self, dataset: Dataset, corpus: List[Dict[str, Any]]) -> None:
         """Create ColBERT index for semantic search."""
-        if not COLBERT_AVAILABLE:
-            Logger().warn("ColBERT not available, semantic search will be disabled")
-            return
         colbert_dir = os.path.join(os.path.normpath(
             os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
 
@@ -110,8 +97,6 @@ class LexicalSemanticAgent(Agent):
         with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
             self._colbert_searcher = Searcher(index=self._index, collection=[
                 doc['content'] for doc in corpus])
-
-
 
     def _search_lexical(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """
@@ -163,7 +148,7 @@ class LexicalSemanticAgent(Agent):
         Returns:
             List[Dict[str, Any]]: Retrieved documents with scores.
         """
-        if not COLBERT_AVAILABLE or not self._colbert_searcher:
+        if not self._colbert_searcher:
             Logger().warn("ColBERT searcher not available, falling back to lexical search")
             return self._search_lexical(query, k)
 
