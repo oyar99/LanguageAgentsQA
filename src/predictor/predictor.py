@@ -54,8 +54,6 @@ Please provide the model deployment identifier using the -m flag.""")
                 batch, get_qa_output_path(str(i)))
 
 # pylint: disable-next=too-many-locals
-
-
 def question_answering(dataset: Dataset, agent: Agent, args) -> Optional[list[Batch]]:
     """
     Generates predictions for the given dataset using the specified agent.

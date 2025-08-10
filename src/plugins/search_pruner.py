@@ -8,9 +8,9 @@ from logger.logger import Logger
 
 
 def search_pruner(
-        query: str, 
-        documents: List[Dict[str, Any]], 
-        thought: str, 
+        query: str,
+        documents: List[Dict[str, Any]],
+        thought: str,
         threshold=50.0
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """
@@ -33,7 +33,8 @@ def search_pruner(
     }
 
     for doc in documents:
-        relevance_score, usage_metrics_loc = _calculate_relevance(query, doc['content'], thought)
+        relevance_score, usage_metrics_loc = _calculate_relevance(
+            query, doc['content'], thought)
 
         usage_metrics["completion_tokens"] += usage_metrics_loc["completion_tokens"]
         usage_metrics["prompt_tokens"] += usage_metrics_loc["prompt_tokens"]
