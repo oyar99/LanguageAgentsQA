@@ -110,7 +110,8 @@ class LexicalSemanticAgent(Agent):
             List[Dict[str, Any]]: Retrieved documents with scores.
         """
         if not self._bm25_index or not self._corpus:
-            raise ValueError("BM25 index not created. Please index the dataset first.")
+            raise ValueError(
+                "BM25 index not created. Please index the dataset first.")
 
         # Tokenize the query
         tokenized_query = tokenize(
@@ -232,6 +233,13 @@ class LexicalSemanticAgent(Agent):
         iteration = 0
         final_answer = None
 
+        # Initialize usage metrics tracking
+        usage_metrics = {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0
+        }
+
         while iteration < max_iterations and final_answer is None:
             iteration += 1
             Logger().debug(f"ReAct iteration {iteration}")
@@ -260,6 +268,12 @@ class LexicalSemanticAgent(Agent):
             }
 
             result = chat_completions([open_ai_request])[0][0]
+
+            # Update usage metrics
+            usage_metrics["completion_tokens"] += result.usage.completion_tokens
+            usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
+            usage_metrics["total_tokens"] += result.usage.total_tokens
+
             response_content = result.choices[0].message.content.strip()
 
             Logger().debug(f"Model response: {response_content}")
@@ -316,7 +330,8 @@ class LexicalSemanticAgent(Agent):
                     sources.update(doc['original_id'] for doc in documents)
 
                     # Create observation
-                    turn['observations'].append([doc['content'] for doc in documents])
+                    turn['observations'].append(
+                        [doc['content'] for doc in documents])
 
             conversation_history.append(turn)
 
@@ -335,6 +350,7 @@ class LexicalSemanticAgent(Agent):
             for doc_id in sources
         ])
         notebook.update_notes(final_answer)
+        notebook.update_usage_metrics(usage_metrics)
 
         return notebook
 
