@@ -16,7 +16,7 @@ class BaseLogger(ABC, metaclass=Singleton):
 
     def __init__(self):
         self._run_id = str(uuid.uuid4())
-        self._logger = logging.getLogger(__name__)
+        self._logger = logging.getLogger()
         self._log_level = os.getenv("SCRIPT_LOG_LEVEL", "INFO").upper()
         self._logger.setLevel(level=self._log_level)
 
@@ -92,7 +92,15 @@ class MainProcessLogger(BaseLogger):
 
         self._q = Queue(-1)
 
-        self._ql = QueueListener(self._q, fh, ch)
+        handlers = []
+
+        enable_console_logging = os.getenv("ENABLE_CONSOLE_LOGGING", "0") == "1"
+        if enable_console_logging:
+            handlers = [ch, fh]
+        else:
+            handlers = [fh]
+
+        self._ql = QueueListener(self._q, *handlers)
         self._ql.start()
 
     def get_queue(self) -> Queue:
@@ -112,6 +120,17 @@ class MainProcessLogger(BaseLogger):
             QueueListener: the queue listener used by the logger
         """
         return self._ql
+    
+    def shutdown(self):
+        """
+        Clean up the logger by stopping the queue listener.
+        """
+        if self._ql:
+            self._ql.stop()
+            self._ql = None
+        if self._q:
+            self._q.close()
+            self._q = None
 
 
 class Logger(BaseLogger):
