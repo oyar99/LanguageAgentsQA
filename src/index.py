@@ -2,7 +2,7 @@
 import argparse
 from dotenv import load_dotenv
 
-from logger.logger import Logger
+from logger.logger import Logger, MainProcessLogger
 from orchestrator.orchestrator import Orchestrator
 
 
@@ -81,15 +81,19 @@ def main():
     """
     Entry point to evaluate agent-based architectures for retrieval and answer generation tasks.
     """
+    Logger().info(
+        f"Starting program with execution id: {Logger().get_run_id()}")
+
     args = parse_args()
 
     Orchestrator(args).run()
 
+    Logger().info(
+        f"Terminating program with execution id: {Logger().get_run_id()}")
+
+    MainProcessLogger().shutdown()
+
 
 if __name__ == "__main__":
     load_dotenv()
-    Logger().info(
-        f"Starting program with execution id: {Logger().get_run_id()}")
     main()
-    Logger().info(
-        f"Terminating program with execution id: {Logger().get_run_id()}")
