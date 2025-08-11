@@ -84,7 +84,11 @@ def _calculate_relevance(query: str, content: str, thought: str) -> Tuple[float,
     except ValueError:
         Logger().error(f"Invalid score returned: {score}")
         # Assuming invalid scores should be treated as relevant
-        return 100.0
+        return (100.0, {
+            "completion_tokens": result.usage.completion_tokens,
+            "prompt_tokens": result.usage.prompt_tokens,
+            "total_tokens": result.usage.total_tokens
+        })
 
     return (max(0.0, min(100.0, score)), {
         "completion_tokens": result.usage.completion_tokens,
