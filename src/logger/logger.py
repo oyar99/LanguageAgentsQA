@@ -94,7 +94,8 @@ class MainProcessLogger(BaseLogger):
 
         handlers = []
 
-        enable_console_logging = os.getenv("ENABLE_CONSOLE_LOGGING", "0") == "1"
+        enable_console_logging = os.getenv(
+            "ENABLE_CONSOLE_LOGGING", "0") == "1"
         if enable_console_logging:
             handlers = [ch, fh]
         else:
@@ -120,7 +121,7 @@ class MainProcessLogger(BaseLogger):
             QueueListener: the queue listener used by the logger
         """
         return self._ql
-    
+
     def shutdown(self):
         """
         Clean up the logger by stopping the queue listener.
@@ -148,6 +149,7 @@ class Logger(BaseLogger):
         qh = QueueHandler(queue)
 
         self._logger.addHandler(qh)
+
 
 def worker_init(q: Queue):
     """
