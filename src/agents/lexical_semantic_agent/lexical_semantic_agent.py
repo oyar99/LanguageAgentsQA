@@ -4,19 +4,18 @@ This agent automatically decides between BM25 lexical search and ColBERT semanti
 based on the nature of the query, following ReAct framework with manual tool invocation.
 """
 # pylint: disable=duplicate-code
-from multiprocessing import Lock, Pool, cpu_count
 import os
 from typing import Dict, List, Any, Optional
-from queue import Queue
 
 from rank_bm25 import BM25Okapi as BM25Ranker
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
-from logger.logger import Logger, MainProcessLogger
+from logger.logger import Logger
 from models.agent import IntelligentAgent, NoteBook
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from utils.tokenizer import PreprocessingMethod, tokenize
+import utils.agent_worker as worker
 
 
 class LexicalSemanticAgent(IntelligentAgent):
@@ -160,7 +159,7 @@ class LexicalSemanticAgent(IntelligentAgent):
         if k is None:
             k = self._args.k or 5
 
-        doc_ids, _ranking, scores = searcher.search(query, k=k)
+        doc_ids, _ranking, scores = worker.searcher.search(query, k=k)
 
         documents = []
         for doc_id, _, score in zip(doc_ids, _ranking, scores):
@@ -189,18 +188,15 @@ class LexicalSemanticAgent(IntelligentAgent):
             raise RuntimeError(
                 "Index and corpus must be initialized before creating a searcher.")
 
-        # pylint: disable-next=global-variable-undefined
-        global searcher
-
-        if searcher is None:
+        if worker.searcher is None:
             colbert_dir = os.path.join(os.path.normpath(
                 os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
 
             Logger().debug("Initializing searcher")
 
-            with lock:
+            with worker.lock:
                 with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
-                    searcher = Searcher(index=self._index, collection=[
+                    worker.searcher = Searcher(index=self._index, collection=[
                         doc['content'] for doc in self._corpus], verbose=1)
 
     def reason(self, question: str) -> NoteBook:
@@ -225,42 +221,6 @@ class LexicalSemanticAgent(IntelligentAgent):
         """
         raise NotImplementedError(
             "Batch reasoning is not implemented for the LexicalSemanticAgent.")
-
-    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
-        """
-        Processes the questions in parallel using multiprocessing.
-        This function is used to speed up the reasoning process by using multiple processes.
-        It creates a pool of workers and maps the questions to the reason function.
-
-        This function can be overridden by the agent to implement a custom multiprocessing strategy specially needed if 
-        the agent will use another device (GPU) to process the questions.
-
-        Args:
-            question (list[str]): the given questions
-
-        Returns:
-            notebook (list[Notebook]): the detailed findings to help answer all questions (context)
-        """
-        l = Lock()
-
-        results = []
-        with Pool(min(40, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
-            results = pool.map(self.reason, questions)
-
-        return results
-
-
-def init_agent_worker(q: Queue, l):  # type: ignore
-    """
-    Initializes the ReactAgentCustom worker.
-    """
-    Logger(q)
-    # pylint: disable-next=global-variable-undefined
-    global searcher
-    # pylint: disable-next=global-variable-undefined
-    global lock
-    lock = l
-    searcher = None
 
 
 # Default job arguments

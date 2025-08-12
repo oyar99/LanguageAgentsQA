@@ -2,13 +2,12 @@
 """
 # pylint: disable=duplicate-code
 import json
-from multiprocessing import Lock, Pool, cpu_count
 import os
-from queue import Queue
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
+import utils.agent_worker as worker
 from azure_open_ai.chat_completions import chat_completions
-from logger.logger import Logger, MainProcessLogger
+from logger.logger import Logger
 from models.agent import Agent, NoteBook
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
@@ -66,7 +65,7 @@ class ReactAgent(Agent):
         Returns:
             tuple[list[RetrievedResult], list[int]]: Tuple containing list of retrieved documents and list of doc_ids.
         """
-        doc_ids, _ranking, scores = searcher.search(
+        doc_ids, _ranking, scores = worker.searcher.search(
             query, k=self._args.k or 5)
 
         documents = [RetrievedResult(
@@ -170,18 +169,15 @@ for a given query orderd by relevance, using a dense retriever.",
             raise RuntimeError(
                 "Index and corpus must be initialized before creating a searcher.")
 
-        # pylint: disable-next=global-variable-undefined
-        global searcher
-
-        if searcher is None:
+        if worker.lock is None:
             colbert_dir = os.path.join(os.path.normpath(
                 os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
 
             Logger().debug("Initializing searcher")
 
-            with lock:
+            with worker.lock:
                 with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
-                    searcher = Searcher(index=self._index, collection=[
+                    worker.searcher = Searcher(index=self._index, collection=[
                         doc['content'] for doc in self._corpus], verbose=1)
 
     # pylint: disable-next=too-many-locals
@@ -258,41 +254,6 @@ for a given query orderd by relevance, using a dense retriever.",
         """
         raise NotImplementedError(
             "Batch reasoning is not implemented for the ReactAgent.")
-
-    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
-        """
-        Processes the questions in parallel using multiprocessing.
-        This function is used to speed up the reasoning process by using multiple processes.
-        It creates a pool of workers and maps the questions to the reason function.
-
-        This function can be overridden by the agent to implement a custom multiprocessing strategy specially needed if 
-        the agent will use another device (GPU) to process the questions.
-
-        Args:
-            question (list[str]): the given questions
-
-        Returns:
-            notebook (list[Notebook]): the detailed findings to help answer all questions (context)
-        """
-        l = Lock()
-
-        results = []
-        with Pool(min(40, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
-            results = pool.map(self.reason, questions)
-
-        return results
-
-def init_agent_worker(q: Queue, l):  # type: ignore
-    """
-    Initializes the ReactAgentCustom worker.
-    """
-    Logger(q)
-    # pylint: disable-next=global-variable-undefined
-    global searcher
-    # pylint: disable-next=global-variable-undefined
-    global lock
-    lock = l
-    searcher = None
 
 
 default_job_args = {

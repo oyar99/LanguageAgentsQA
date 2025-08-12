@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from inspect import signature
 import json
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Lock, Pool, cpu_count
 import os
 from typing import Any, Callable, Dict, Optional, Set, Tuple
 from azure_open_ai.chat_completions import chat_completions
@@ -11,6 +11,7 @@ from logger.logger import Logger, MainProcessLogger, worker_init
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
+from utils.agent_worker import init_agent_worker
 from utils.model_utils import supports_temperature_param
 
 
@@ -443,6 +444,29 @@ class IntelligentAgent(Agent, ABC):
         notebook.update_usage_metrics(usage_metrics)
 
         return notebook
+
+    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
+        """
+        Processes the questions in parallel using multiprocessing.
+        This function is used to speed up the reasoning process by using multiple processes.
+        It creates a pool of workers and maps the questions to the reason function.
+
+        This function can be overridden by the agent to implement a custom multiprocessing strategy specially needed if 
+        the agent will use another device (GPU) to process the questions.
+
+        Args:
+            question (list[str]): the given questions
+
+        Returns:
+            notebook (list[Notebook]): the detailed findings to help answer all questions (context)
+        """
+        l = Lock()
+
+        results = []
+        with Pool(min(42, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
+            results = pool.map(self.reason, questions)
+
+        return results
 
 
 # Default job arguments
