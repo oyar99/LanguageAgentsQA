@@ -2,11 +2,13 @@
 """
 # pylint: disable=duplicate-code
 import json
+from multiprocessing import Lock, Pool, cpu_count
 import os
+from queue import Queue
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
 from azure_open_ai.chat_completions import chat_completions
-from logger.logger import Logger
+from logger.logger import Logger, MainProcessLogger
 from models.agent import Agent, NoteBook
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
@@ -22,7 +24,6 @@ class ReactAgent(Agent):
     def __init__(self, args):
         self._index = None
         self._corpus = None
-        self._searcher = None
         self._args = args
         super().__init__(args)
 
@@ -55,7 +56,7 @@ class ReactAgent(Agent):
         self._corpus = corpus
         Logger().info("Successfully indexed documents")
 
-    def _search_documents(self, query: str, searcher: Searcher) -> tuple[list[RetrievedResult], list[int]]:
+    def _search_documents(self, query: str) -> tuple[list[RetrievedResult], list[int]]:
         """
         Search for documents using the ColBERT retriever.
 
@@ -133,7 +134,7 @@ for a given query orderd by relevance, using a dense retriever.",
             }
         ]
 
-    def _process_tool_calls(self, tool_calls, messages: list, sources: set, searcher: Searcher):
+    def _process_tool_calls(self, tool_calls, messages: list, sources: set):
         """
         Process tool calls from the model response.
 
@@ -147,7 +148,7 @@ for a given query orderd by relevance, using a dense retriever.",
                 function_args = json.loads(tool_call.function.arguments)
                 query = function_args.get("query")
 
-                documents, doc_ids = self._search_documents(query, searcher=searcher)
+                documents, doc_ids = self._search_documents(query)
 
                 sources.update(doc_ids)
 
@@ -160,17 +161,38 @@ for a given query orderd by relevance, using a dense retriever.",
                     })
                 })
 
+    def _init_searcher(self) -> None:
+        """
+        Initializes the searcher for the ReactAgentCustom.
+        This is used to set up the searcher with the indexed documents.
+        """
+        if self._index is None or self._corpus is None:
+            raise RuntimeError(
+                "Index and corpus must be initialized before creating a searcher.")
+
+        # pylint: disable-next=global-variable-undefined
+        global searcher
+
+        if searcher is None:
+            colbert_dir = os.path.join(os.path.normpath(
+                os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
+
+            Logger().debug("Initializing searcher")
+
+            with lock:
+                with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
+                    searcher = Searcher(index=self._index, collection=[
+                        doc['content'] for doc in self._corpus], verbose=1)
+
     # pylint: disable-next=too-many-locals
     def reason(self, question: str) -> NoteBook:  # type: ignore
         """
         Reason over the indexed dataset to answer the question.
         """
-        colbert_dir = os.path.join(os.path.normpath(
-            os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
+        Logger().debug(
+            f"Starting reasoning for question: {question}, process ID: {os.getpid()}")
 
-        with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
-            searcher = Searcher(index=self._index, collection=[
-                doc['content'] for doc in self._corpus])
+        self._init_searcher()
 
         open_ai_requests = self._create_initial_request(question)
         messages = open_ai_requests[0]["body"]["messages"]
@@ -211,7 +233,7 @@ for a given query orderd by relevance, using a dense retriever.",
             finish_reason = result.choices[0].finish_reason
 
             if tool_calls:
-                self._process_tool_calls(tool_calls, messages, sources, searcher=searcher)
+                self._process_tool_calls(tool_calls, messages, sources)
 
         answer = result.choices[0].message.content.strip()
 
@@ -237,6 +259,41 @@ for a given query orderd by relevance, using a dense retriever.",
         """
         raise NotImplementedError(
             "Batch reasoning is not implemented for the ReactAgent.")
+
+    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
+        """
+        Processes the questions in parallel using multiprocessing.
+        This function is used to speed up the reasoning process by using multiple processes.
+        It creates a pool of workers and maps the questions to the reason function.
+
+        This function can be overridden by the agent to implement a custom multiprocessing strategy specially needed if 
+        the agent will use another device (GPU) to process the questions.
+
+        Args:
+            question (list[str]): the given questions
+
+        Returns:
+            notebook (list[Notebook]): the detailed findings to help answer all questions (context)
+        """
+        l = Lock()
+
+        results = []
+        with Pool(min(40, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
+            results = pool.map(self.reason, questions)
+
+        return results
+
+def init_agent_worker(q: Queue, l):  # type: ignore
+    """
+    Initializes the ReactAgentCustom worker.
+    """
+    Logger(q)
+    # pylint: disable-next=global-variable-undefined
+    global searcher
+    # pylint: disable-next=global-variable-undefined
+    global lock
+    lock = l
+    searcher = None
 
 
 default_job_args = {

@@ -16,7 +16,7 @@ class BaseLogger(ABC, metaclass=Singleton):
 
     def __init__(self):
         self._run_id = str(uuid.uuid4())
-        self._logger = logging.getLogger()
+        self._logger = logging.getLogger(__name__)
         self._log_level = os.getenv("SCRIPT_LOG_LEVEL", "INFO").upper()
         self._logger.setLevel(level=self._log_level)
 

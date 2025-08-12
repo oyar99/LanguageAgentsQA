@@ -5,14 +5,16 @@ based on the nature of the query, following ReAct framework with manual tool inv
 """
 # pylint: disable=duplicate-code
 import json
+from multiprocessing import Lock, Pool, cpu_count
 import os
 from typing import Dict, List, Any, Optional, Set
+from queue import Queue
 
 from rank_bm25 import BM25Okapi as BM25Ranker
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
 from azure_open_ai.chat_completions import chat_completions
-from logger.logger import Logger
+from logger.logger import Logger, MainProcessLogger
 from models.agent import Agent, NoteBook
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
@@ -206,6 +208,30 @@ class LexicalSemanticAgent(Agent):
             Logger().debug(f"Raw response: {response_content}")
             return None
 
+    def _init_searcher(self) -> None:
+        """
+        Initializes the searcher for the ReactAgentCustom.
+        This is used to set up the searcher with the indexed documents.
+        """
+        if self._index is None or self._corpus is None:
+            raise RuntimeError(
+                "Index and corpus must be initialized before creating a searcher.")
+
+        # pylint: disable-next=global-variable-undefined
+        global searcher
+
+        # pylint: disable-next=used-before-assignment
+        if searcher is None:
+            colbert_dir = os.path.join(os.path.normpath(
+                os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
+
+            Logger().debug("Initializing searcher")
+
+            with lock:
+                with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
+                    searcher = Searcher(index=self._index, collection=[
+                        doc['content'] for doc in self._corpus], verbose=1)
+
     # pylint: disable-next=too-many-branches,too-many-locals,too-many-statements
     def reason(self, question: str) -> NoteBook:  # type: ignore
         """
@@ -218,12 +244,7 @@ class LexicalSemanticAgent(Agent):
             raise ValueError(
                 "Indexes not initialized. Please index the dataset first.")
 
-        colbert_dir = os.path.join(os.path.normpath(
-            os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
-
-        with Run().context(RunConfig(nranks=2, experiment=os.path.join(colbert_dir, 'colbertv2.0'))):
-            searcher = Searcher(index=self._index, collection=[
-                doc['content'] for doc in self._corpus])
+        self._init_searcher()
 
         conversation_history = []
         sources: Set[int] = set()
@@ -361,6 +382,41 @@ class LexicalSemanticAgent(Agent):
         """
         raise NotImplementedError(
             "Batch reasoning is not implemented for the LexicalSemanticAgent.")
+
+    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
+        """
+        Processes the questions in parallel using multiprocessing.
+        This function is used to speed up the reasoning process by using multiple processes.
+        It creates a pool of workers and maps the questions to the reason function.
+
+        This function can be overridden by the agent to implement a custom multiprocessing strategy specially needed if 
+        the agent will use another device (GPU) to process the questions.
+
+        Args:
+            question (list[str]): the given questions
+
+        Returns:
+            notebook (list[Notebook]): the detailed findings to help answer all questions (context)
+        """
+        l = Lock()
+
+        results = []
+        with Pool(min(40, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
+            results = pool.map(self.reason, questions)
+
+        return results
+
+def init_agent_worker(q: Queue, l):  # type: ignore
+    """
+    Initializes the ReactAgentCustom worker.
+    """
+    Logger(q)
+    # pylint: disable-next=global-variable-undefined
+    global searcher
+    # pylint: disable-next=global-variable-undefined
+    global lock
+    lock = l
+    searcher = None
 
 
 # Default job arguments
