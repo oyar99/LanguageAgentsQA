@@ -135,7 +135,7 @@ class LexicalSemanticAgent(Agent):
 
         return documents
 
-    def _search_semantic(self, query: str, searcher: Searcher, k: int = 5) -> List[Dict[str, Any]]:
+    def _search_semantic(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """
         Perform ColBERT semantic search.
 
@@ -220,7 +220,6 @@ class LexicalSemanticAgent(Agent):
         # pylint: disable-next=global-variable-undefined
         global searcher
 
-        # pylint: disable-next=used-before-assignment
         if searcher is None:
             colbert_dir = os.path.join(os.path.normpath(
                 os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
@@ -341,7 +340,7 @@ class LexicalSemanticAgent(Agent):
                             f"Lexical search for '{action_input}': {len(documents)} results")
                     else:  # search_semantic
                         documents = self._search_semantic(
-                            action_input, searcher=searcher, k=self._args.k or 5)
+                            action_input, k=self._args.k or 5)
                         Logger().debug(
                             f"Semantic search for '{action_input}': {len(documents)} results")
 
