@@ -4,23 +4,19 @@ This agent automatically decides between BM25 lexical search and ColBERT semanti
 based on the nature of the query, following ReAct framework with manual tool invocation.
 """
 # pylint: disable=duplicate-code
-import json
 from multiprocessing import Lock, Pool, cpu_count
 import os
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 from queue import Queue
 
 from rank_bm25 import BM25Okapi as BM25Ranker
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
-from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger, MainProcessLogger
 from models.agent import IntelligentAgent, NoteBook
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
-from models.retrieved_result import RetrievedResult
 from utils.tokenizer import PreprocessingMethod, tokenize
-from utils.model_utils import supports_temperature_param
 
 
 class LexicalSemanticAgent(IntelligentAgent):
@@ -42,6 +38,7 @@ class LexicalSemanticAgent(IntelligentAgent):
         super().__init__(actions, args)
 
         self.standalone = True
+        self._prompt = LEXICAL_SEMANTIC_AGENT_PROMPT
 
     def index(self, dataset: Dataset) -> None:
         """
@@ -183,25 +180,6 @@ class LexicalSemanticAgent(IntelligentAgent):
             {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
         )
 
-    def _create_react_prompt(self, conversation_history: List[Dict[str, str]] = None) -> str:
-        """
-        Create a ReAct prompt for the agent.
-
-        Args:
-            conversation_history (List[Dict[str, str]], optional): Previous conversation turns.
-
-        Returns:
-            str: Formatted ReAct prompt.
-        """
-        base_prompt = LEXICAL_SEMANTIC_AGENT_PROMPT
-
-        if conversation_history:
-            history_text = "\n".join(json.dumps(turn, indent=2)
-                                     for turn in conversation_history)
-            base_prompt += f"\n\nCONVERSATION HISTORY:\n{history_text}"
-
-        return base_prompt
-
     def _init_searcher(self) -> None:
         """
         Initializes the searcher for the ReactAgentCustom.
@@ -225,128 +203,18 @@ class LexicalSemanticAgent(IntelligentAgent):
                     searcher = Searcher(index=self._index, collection=[
                         doc['content'] for doc in self._corpus], verbose=1)
 
-    # pylint: disable-next=too-many-branches,too-many-locals,too-many-statements
-    def reason(self, question: str) -> NoteBook:  # type: ignore
+    def reason(self, question: str) -> NoteBook:
         """
         Reason over the indexed dataset to answer the question using ReAct framework
         with intelligent lexical/semantic search selection.
         """
-        Logger().debug(f"Starting reasoning for question: {question}")
 
-        if not self._bm25_index:
-            raise ValueError(
-                "Indexes not initialized. Please index the dataset first.")
-
+        # Prepare any data that actions may need when they are executed by the ReAct engine
+        # Ideally everything is ready once index is called. Unfortunately, some libraries like ColBERT use
+        # objects that can't be pickled, and hence need to be instantiated in each process.
         self._init_searcher()
 
-        conversation_history = []
-        sources: Set[int] = set()
-        max_iterations = 8
-        iteration = 0
-        final_answer = None
-
-        # Initialize usage metrics tracking
-        usage_metrics = {
-            "completion_tokens": 0,
-            "prompt_tokens": 0,
-            "total_tokens": 0
-        }
-
-        while iteration < max_iterations and final_answer is None:
-            iteration += 1
-            Logger().debug(f"ReAct iteration {iteration}")
-
-            # Create prompt with conversation history
-            prompt = self._create_react_prompt(conversation_history)
-
-            # Call the model
-            messages = [
-                {"role": "system", "content": LEXICAL_SEMANTIC_AGENT_PROMPT},
-                {"role": "user", "content": question},
-                {"role": "system", "content": prompt}
-            ]
-
-            Logger().debug(f"Sending messages to model: {messages}")
-
-            open_ai_request = {
-                "custom_id": f"lexical_semantic_iteration_{iteration}",
-                "model": self._args.model,
-                "messages": messages,
-                "temperature": default_job_args['temperature']
-                if supports_temperature_param(self._args.model) else None,
-                "frequency_penalty": default_job_args['frequency_penalty'],
-                "presence_penalty": default_job_args['presence_penalty'],
-                "max_completion_tokens": 1000,
-            }
-
-            result = chat_completions([open_ai_request])[0][0]
-
-            # Update usage metrics
-            usage_metrics["completion_tokens"] += result.usage.completion_tokens
-            usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
-            usage_metrics["total_tokens"] += result.usage.total_tokens
-
-            response_content = result.choices[0].message.content.strip()
-
-            Logger().debug(f"Model response: {response_content}")
-
-            # Parse structured response
-            parsed_response = self._parse_structured_response(response_content)
-
-            if not parsed_response:
-                # Fallback: treat as final answer
-                final_answer = response_content
-                break
-
-            # Handle the structured response
-            thought = parsed_response.get('thought', '')
-            actions = parsed_response.get('actions', [])
-            final_answer = parsed_response.get('final_answer', None)
-
-            # Add to conversation history
-            turn = {'thought': thought, 'actions': actions, 'observations': []}
-
-            for action in actions:
-                # Parse action string to extract function name and arguments
-                action_fn, *action_args = self._parse_action(action)
-
-                observations, action_sources, action_usage_metrics = action_fn(
-                    *action_args)
-
-                # Track sources
-                sources.update(action_sources)
-
-                # Update usage metrics
-                usage_metrics["completion_tokens"] += action_usage_metrics.get(
-                    "completion_tokens", 0)
-                usage_metrics["prompt_tokens"] += action_usage_metrics.get(
-                    "prompt_tokens", 0)
-                usage_metrics["total_tokens"] += action_usage_metrics.get(
-                    "total_tokens", 0)
-
-                # Create observation
-                turn['observations'].append(observations)
-
-            conversation_history.append(turn)
-
-        if final_answer is None:
-            final_answer = "N/A"
-
-        Logger().info(f"Final answer: {final_answer}")
-
-        # Create notebook with results
-        notebook = NoteBook()
-        notebook.update_sources([
-            RetrievedResult(
-                doc_id=self._corpus[doc_id]['doc_id'],
-                content=self._corpus[doc_id]['content']
-            )
-            for doc_id in sources
-        ])
-        notebook.update_notes(final_answer)
-        notebook.update_usage_metrics(usage_metrics)
-
-        return notebook
+        return super().reason(question)
 
     def batch_reason(self, _: List[QuestionAnswer]) -> List[NoteBook]:  # type: ignore
         """

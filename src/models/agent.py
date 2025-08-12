@@ -1,13 +1,17 @@
 """An agent module."""
 
 from abc import ABC, abstractmethod
+from inspect import signature
 import json
 from multiprocessing import Pool, cpu_count
-from typing import Any, Callable, Dict, Optional, Tuple
+import os
+from typing import Any, Callable, Dict, Optional, Set, Tuple
+from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger, MainProcessLogger, worker_init
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
+from utils.model_utils import supports_temperature_param
 
 
 class NoteBook:
@@ -193,6 +197,8 @@ class IntelligentAgent(Agent, ABC):
     def __init__(self, actions: Dict[str, Callable[..., Any]], args):
         super().__init__(args)
         self._actions = actions
+        self._max_iteratios = 8
+        self._prompt = ""
 
     def _parse_structured_response(self, response_content: str) -> Optional[Dict[str, Any]]:
         """
@@ -305,3 +311,144 @@ class IntelligentAgent(Agent, ABC):
 
         Logger().error(f"Invalid action format: {action}")
         raise ValueError(f"Invalid action format: {action}")
+
+    # pylint: disable-next=too-many-locals
+    def reason(self, question: str) -> NoteBook:
+        """
+        Reason over the indexed dataset to answer the question.
+
+        Args:
+            question (str): The question to reason about.
+
+        Returns:
+            NoteBook: A notebook containing the reasoning results.
+        """
+        Logger().debug(
+            f"Starting reasoning for question: {question}, process ID: {os.getpid()}")
+
+        stm = []
+        sources: Set[int] = set()
+
+        iteration = 0
+        final_answer = None
+
+        usage_metrics = {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0
+        }
+
+        while iteration < self._max_iteratios and final_answer is None:
+            Logger().debug(
+                f"Iteration {iteration + 1} for question: {question}")
+            iteration += 1
+
+            messages = [
+                {"role": "system", "content": self._prompt},
+                {"role": "user", "content": question}
+            ]
+
+            messages.extend([{"role": "system", "content": memory}
+                            for memory in stm])
+
+            Logger().debug(f"Sending messages to model: {messages}")
+
+            open_ai_request = {
+                "custom_id": f"react_iteration_{iteration}",
+                "model": self._args.model,
+                "messages": messages,
+                "temperature": default_job_args['temperature']
+                if supports_temperature_param(self._args.model) else None,
+                "frequency_penalty": default_job_args['frequency_penalty'],
+                "presence_penalty": default_job_args['presence_penalty'],
+                "max_completion_tokens": 1000,
+            }
+
+            result = chat_completions([open_ai_request])[0][0]
+
+            # Update usage metrics
+            usage_metrics["completion_tokens"] += result.usage.completion_tokens
+            usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
+            usage_metrics["total_tokens"] += result.usage.total_tokens
+
+            response_content = result.choices[0].message.content.strip()
+
+            Logger().debug(f"Model response: {response_content}")
+
+            # Parse the structured response
+            structured_response = self._parse_structured_response(
+                response_content)
+
+            if structured_response is None:
+                Logger().error(
+                    f"Failed to parse structured response for question: {question}")
+                raise ValueError(
+                    f"Failed to parse structured response for question: {question}")
+
+            thought = structured_response.get("thought")
+            actions = structured_response.get("actions", [])
+            final_answer = structured_response.get("final_answer", None)
+
+            turn = {'thought': thought, 'actions': actions, 'observations': []}
+
+            for action in actions:
+                # Parse action string to extract function name and arguments
+                action_func, *action_args = self._parse_action(action)
+
+                sig = signature(action_func)
+                has_context = sig.parameters.get('context', 'None')
+
+                # Execute the action function with or without context
+                # Context explains why the action is being taken, and actions can use this information
+                # to decide what to do next, and validate whether it makes sense to execute the action or not
+                if has_context:
+                    observations, action_sources, action_usage_metrics = action_func(
+                        *action_args, context=thought)
+                else:
+                    observations, action_sources, action_usage_metrics = action_func(
+                        *action_args)
+
+                turn['observations'].append(observations)
+
+                # Update usage metrics
+                usage_metrics["completion_tokens"] += action_usage_metrics.get(
+                    "completion_tokens", 0)
+                usage_metrics["prompt_tokens"] += action_usage_metrics.get(
+                    "prompt_tokens", 0)
+                usage_metrics["total_tokens"] += action_usage_metrics.get(
+                    "total_tokens", 0)
+
+                # Track sources
+                sources.update(action_sources)
+
+            stm.append(json.dumps(turn))
+
+        if final_answer is None:
+            final_answer = "N/A"
+
+        Logger().info(
+            f"Final answer for question '{question}': {final_answer}")
+
+        # Create notebook with results
+        # TODO: Revisit whether this should have knowledge about the corpus
+        notebook = NoteBook()
+        notebook.update_sources([
+            RetrievedResult(
+                doc_id=self._corpus[doc_id]['doc_id'],
+                content=self._corpus[doc_id]['content']
+            )
+            for doc_id in sources
+        ])
+        notebook.update_notes(final_answer)
+        notebook.update_usage_metrics(usage_metrics)
+
+        return notebook
+
+
+# Default job arguments
+default_job_args = {
+    'temperature': 0.0,
+    'max_completion_tokens': 1000,
+    'frequency_penalty': 0.0,
+    'presence_penalty': 0.0
+}

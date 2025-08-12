@@ -191,7 +191,6 @@ for a given query orderd by relevance, using a dense retriever.",
         """
         Logger().debug(
             f"Starting reasoning for question: {question}, process ID: {os.getpid()}")
-
         self._init_searcher()
 
         open_ai_requests = self._create_initial_request(question)
