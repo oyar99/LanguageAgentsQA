@@ -96,7 +96,7 @@ def _calculate_relevance(query: str, content: str, thought: str) -> Tuple[float,
         "total_tokens": result.usage.total_tokens
     })
 
-
+# pylint: disable=duplicate-code
 # Default job arguments
 default_job_args = {
     'temperature': 0.0,
@@ -104,6 +104,7 @@ default_job_args = {
     'frequency_penalty': 0.0,
     'presence_penalty': 0.0
 }
+# pylint: enable=duplicate-code
 
 RELEVANCE_AGENT_PROMPT = '''You are a helpful assistant that is helping an AI agent evaluate the relevance of search \
 results to a given query, and thought process. Your task is to provide a relevance score \
