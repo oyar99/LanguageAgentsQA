@@ -71,7 +71,7 @@ class TwoWiki(Dataset):
         with open(file_path, encoding="utf-8") as twowiki_corpus:
             corpus = json.load(twowiki_corpus)
             corpus = [
-                Document(doc_id=get_content_hash(doc['text']), content=doc['text'])
+                Document(doc_id=get_content_hash(doc['text']), content=f'{doc["title"]}:{doc["text"]}')
                 for doc in corpus
             ]
             super()._log_dataset_stats(corpus)

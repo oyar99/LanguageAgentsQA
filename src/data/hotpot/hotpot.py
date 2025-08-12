@@ -72,7 +72,7 @@ class Hotpot(Dataset):
             corpus = json.load(hotpot_corpus)
             corpus = [
                 Document(doc_id=get_content_hash(
-                    doc['text']), content=doc['text'])
+                    doc['text']), content=f'{doc["title"]}:{doc["text"]}')
                 for doc in corpus
             ]
             super()._log_dataset_stats(corpus)

@@ -433,10 +433,8 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
                 response_content)
 
             if structured_response is None:
-                Logger().error(
-                    f"Failed to parse structured response for question: {question}")
-                raise ValueError(
-                    f"Failed to parse structured response for question: {question}")
+                # If parsing failed, give up. In the future, we will implement self-reflection to improve the response.
+                break
 
             thought = structured_response.get("thought")
             actions = structured_response.get("actions", [])
