@@ -1,9 +1,10 @@
 """An agent module."""
 
 from abc import ABC, abstractmethod
+import json
 from multiprocessing import Pool, cpu_count
-from typing import Optional
-from logger.logger import MainProcessLogger, worker_init
+from typing import Any, Callable, Dict, Optional, Tuple
+from logger.logger import Logger, MainProcessLogger, worker_init
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
@@ -181,3 +182,126 @@ class Agent(ABC):
             results = pool.map(self.reason, questions)
 
         return results
+
+
+class IntelligentAgent(Agent, ABC):
+    """
+    An abstract class representing an intelligent agent that can reason over a dataset.
+    It extends the Agent class and provides additional functionality for reasoning.
+    """
+
+    def __init__(self, actions: Dict[str, Callable[..., Any]], args):
+        super().__init__(args)
+        self._actions = actions
+
+    def _parse_structured_response(self, response_content: str) -> Optional[Dict[str, Any]]:
+        """
+        Parse the structured JSON response. It attempts to extract JSON content from the response string using 
+        various common patterns such as markdown code blocks or JSON-like structures.
+
+        Args:
+            response_content (str): Raw response from the model.
+
+        Returns:
+            Optional[Dict[str, Any]]: Parsed JSON response or None if parsing fails.
+        """
+        try:
+            # Try to extract JSON from the response
+            if '```json' in response_content:
+                json_start = response_content.find('```json') + 7
+                json_end = response_content.find('```', json_start)
+                json_str = response_content[json_start:json_end].strip()
+            elif '{' in response_content and '}' in response_content:
+                json_start = response_content.find('{')
+                json_end = response_content.rfind('}') + 1
+                json_str = response_content[json_start:json_end]
+            else:
+                # Fallback: try to parse the entire response
+                json_str = response_content.strip()
+
+            return json.loads(json_str)
+        except (json.JSONDecodeError, ValueError) as e:
+            Logger().warn(f"Failed to parse structured response: {e}")
+            Logger().debug(f"Raw response: {response_content}")
+            return None
+
+    def _parse_action(self, action: str) -> Tuple[Callable[..., Tuple[list[str], list[str], Dict[str, str]]], ...]:
+        """
+        Parse the action string to extract structured actions, and executes thems.
+
+        Args:
+            action (str): The action string to parse. Must be of the form action(args).
+            args (list): The arguments to pass to the action function. 
+            Only two primitive types are supported: str and int.
+            Named parameters are not supported. There should no be optional parameters.
+
+        Returns:
+            R: The result of the executed action.
+        """
+        action_name = None
+        action_input = None
+
+        if isinstance(action, str) and '(' in action and ')' in action:
+            # Extract function name and arguments from string like "search('query')" or "search(query, 5)"
+            paren_start = action.find('(')
+            paren_end = action.rfind(')')
+
+            action_name = action[:paren_start].strip()
+            args_str = action[paren_start + 1:paren_end].strip()
+
+            # Parse comma-separated arguments while respecting quotes
+            action_input = []
+            if args_str:
+                current_arg = ""
+                in_quotes = False
+                quote_char = None
+                i = 0
+
+                while i < len(args_str):
+                    char = args_str[i]
+
+                    if not in_quotes and char in ["'", '"']:
+                        # Starting a quoted string
+                        in_quotes = True
+                        quote_char = char
+                        current_arg += char
+                    elif in_quotes and char == quote_char:
+                        # Ending a quoted string
+                        in_quotes = False
+                        current_arg += char
+                        quote_char = None
+                    elif not in_quotes and char == ',':
+                        # Found a separator outside quotes
+                        action_input.append(current_arg.strip())
+                        current_arg = ""
+                    else:
+                        current_arg += char
+
+                    i += 1
+
+                # Add the last argument
+                if current_arg.strip():
+                    action_input.append(current_arg.strip())
+
+            # Process each argument
+            for i, arg in enumerate(action_input):
+                if arg.startswith(("'", '"')) and arg.endswith(("'", '"')):
+                    # Remove quotes from arguments if present
+                    arg = arg[1:-1]
+                elif arg.isdigit():
+                    # Convert numeric strings to integers
+                    arg = int(arg)
+                action_input[i] = arg
+
+        if action_name:
+            # Extract action from the actions dictionary
+            action_func = self._actions.get(action_name.lower())
+
+            Logger().debug(
+                f"Parsed action: {action_name} with args: {action_input}")
+
+            # Perform action
+            return action_func, *action_input
+
+        Logger().error(f"Invalid action format: {action}")
+        raise ValueError(f"Invalid action format: {action}")

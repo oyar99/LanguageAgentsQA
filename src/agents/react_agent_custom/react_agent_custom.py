@@ -5,12 +5,12 @@ import json
 from multiprocessing import Lock, cpu_count, Pool
 import os
 from queue import Queue
-from typing import Dict, List, Any, Optional
+from typing import Dict, List
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger, MainProcessLogger
-from models.agent import Agent, NoteBook
+from models.agent import IntelligentAgent, NoteBook
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
@@ -18,7 +18,7 @@ from plugins.search_pruner import search_pruner
 from utils.model_utils import supports_temperature_param
 
 
-class ReactAgentCustom(Agent):
+class ReactAgentCustom(IntelligentAgent):
     """
     ReactAgentCustom for reasoning over indexed documents using a custom instruction fine-tuned model
     with structured output schema following the ReAct prompting framework.
@@ -28,7 +28,11 @@ class ReactAgentCustom(Agent):
         self._index = None
         self._corpus = None
         self._args = args
-        super().__init__(args)
+        actions = {
+            "search": self._search_documents
+        }
+        self._enable_pruning = True
+        super().__init__(actions, args)
 
         self.standalone = True
 
@@ -63,8 +67,7 @@ class ReactAgentCustom(Agent):
             self,
             query: str,
             context: str = "",
-            enable_pruning=True
-    ) -> tuple[List[Dict[str, Any]], List[int], Dict[str, int]]:
+    ) -> tuple[List[str], List[str], Dict[str, int]]:
         """
         Search for documents using the ColBERT retriever.
 
@@ -72,8 +75,8 @@ class ReactAgentCustom(Agent):
             query (str): The search query.
 
         Returns:
-            tuple[List[Dict[str, Any]], List[int]]: Tuple containing list of retrieved documents 
-with content and list of doc_ids.
+            tuple[List[str], List[str], Dict[str, int]]: Tuple containing list of observations (retrieved documents)
+, list of sources if any, and metrics if any.
         """
         doc_ids, _ranking, scores = searcher.search(
             query, k=self._args.k or 5)
@@ -90,8 +93,10 @@ with content and list of doc_ids.
         Logger().debug(
             f"Search results for query '{query}': Found {len(documents)} documents")
 
-        if not enable_pruning:
-            return documents, doc_ids, {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+        if not self._enable_pruning:
+            return ([doc['content'] for doc in documents],
+                    doc_ids,
+                    {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0})
 
         pruned_documents, usage_metrics = search_pruner(
             query, documents, context)
@@ -103,9 +108,9 @@ with content and list of doc_ids.
             Logger().warn(f"No relevant documents found for query: {query}")
             pruned_documents = documents[:1]
 
-        doc_ids = [doc['original_id'] for doc in pruned_documents]
-
-        return pruned_documents, doc_ids, usage_metrics
+        return ([doc['content'] for doc in pruned_documents],
+                [doc['original_id'] for doc in pruned_documents],
+                usage_metrics)
 
     def _create_react_prompt(self, conversation_history: List[Dict[str, str]] = None) -> str:
         """
@@ -117,44 +122,11 @@ with content and list of doc_ids.
         Returns:
             str: Formatted ReAct prompt.
         """
-        base_prompt = REACT_AGENT_CUSTOM_PROMPT
-
         if conversation_history:
-            history_text = "\n".join(json.dumps(turn, indent=2)
-                                     for turn in conversation_history)
-            base_prompt += f"\n\nCONVERSATION HISTORY:\n{history_text}"
+            return "\n".join(json.dumps(turn, indent=2)
+                             for turn in conversation_history)
 
-        return base_prompt
-
-    def _parse_structured_response(self, response_content: str) -> Optional[Dict[str, Any]]:
-        """
-        Parse the structured JSON response from the custom model.
-
-        Args:
-            response_content (str): Raw response from the model.
-
-        Returns:
-            Optional[Dict[str, Any]]: Parsed JSON response or None if parsing fails.
-        """
-        try:
-            # Try to extract JSON from the response
-            if '```json' in response_content:
-                json_start = response_content.find('```json') + 7
-                json_end = response_content.find('```', json_start)
-                json_str = response_content[json_start:json_end].strip()
-            elif '{' in response_content and '}' in response_content:
-                json_start = response_content.find('{')
-                json_end = response_content.rfind('}') + 1
-                json_str = response_content[json_start:json_end]
-            else:
-                # Fallback: try to parse the entire response
-                json_str = response_content.strip()
-
-            return json.loads(json_str)
-        except (json.JSONDecodeError, ValueError) as e:
-            Logger().warn(f"Failed to parse structured response: {e}")
-            Logger().debug(f"Raw response: {response_content}")
-            return None
+        return ""
 
     def _init_searcher(self) -> None:
         """
@@ -210,9 +182,11 @@ with content and list of doc_ids.
             # Call the custom model
             messages = [
                 {"role": "system", "content": REACT_AGENT_CUSTOM_PROMPT},
-                {"role": "user", "content": question},
-                {"role": "system", "content": prompt}
+                {"role": "user", "content": question}
             ]
+
+            if prompt.strip():
+                messages.append({"role": "system", "content": prompt})
 
             Logger().debug(f"Sending messages to model: {messages}")
 
@@ -258,45 +232,22 @@ with content and list of doc_ids.
 
             for action in actions:
                 # Parse action string to extract function name and arguments
-                action_name = None
-                action_input = None
+                action_fn, *action_args = self._parse_action(action)
+                observations, action_sources, action_usage_metrics = action_fn(
+                    *action_args, context=thought)
 
-                if isinstance(action, str) and '(' in action and ')' in action:
-                    # Extract function name and arguments from string like "search('query')"
-                    paren_start = action.find('(')
-                    paren_end = action.rfind(')')
+                turn['observations'].append(observations)
 
-                    action_name = action[:paren_start].strip()
-                    args_str = action[paren_start +
-                                      1:paren_end].strip()
+                # Update usage metrics
+                usage_metrics["completion_tokens"] += action_usage_metrics.get(
+                    "completion_tokens", 0)
+                usage_metrics["prompt_tokens"] += action_usage_metrics.get(
+                    "prompt_tokens", 0)
+                usage_metrics["total_tokens"] += action_usage_metrics.get(
+                    "total_tokens", 0)
 
-                    # Remove quotes from arguments if present
-                    if args_str.startswith(("'", '"')) and args_str.endswith(("'", '"')):
-                        action_input = args_str[1:-1]
-                    else:
-                        action_input = args_str
-
-                if action_name and action_name.lower() == 'search':
-                    # Perform search
-                    documents, doc_ids, search_usage_metrics = self._search_documents(
-                        action_input, context=thought, enable_pruning=True)
-
-                    # Update usage metrics
-                    usage_metrics["completion_tokens"] += search_usage_metrics.get(
-                        "completion_tokens", 0)
-                    usage_metrics["prompt_tokens"] += search_usage_metrics.get(
-                        "prompt_tokens", 0)
-                    usage_metrics["total_tokens"] += search_usage_metrics.get(
-                        "total_tokens", 0)
-
-                    # Track sources
-                    sources.update(doc_ids)
-
-                    # Create observation
-                    turn['observations'].append([
-                        doc['content']
-                        for doc in documents
-                    ])
+                # Track sources
+                sources.update(action_sources)
 
             conversation_history.append(turn)
 

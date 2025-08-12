@@ -15,7 +15,7 @@ from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger, MainProcessLogger
-from models.agent import Agent, NoteBook
+from models.agent import IntelligentAgent, NoteBook
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
@@ -23,7 +23,7 @@ from utils.tokenizer import PreprocessingMethod, tokenize
 from utils.model_utils import supports_temperature_param
 
 
-class LexicalSemanticAgent(Agent):
+class LexicalSemanticAgent(IntelligentAgent):
     """
     LexicalSemanticAgent that intelligently chooses between lexical and semantic search
     based on query characteristics using ReAct framework.
@@ -35,7 +35,11 @@ class LexicalSemanticAgent(Agent):
         self._bm25_index = None
         self._colbert_searcher = None
         self._args = args
-        super().__init__(args)
+        actions = {
+            "search_lexical": self._search_lexical,
+            "search_semantic": self._search_semantic,
+        }
+        super().__init__(actions, args)
 
         self.standalone = True
 
@@ -95,7 +99,7 @@ class LexicalSemanticAgent(Agent):
 
         self._index = dataset.name or 'index'
 
-    def _search_lexical(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+    def _search_lexical(self, query: str, k: Optional[int] = None) -> tuple[List[str], List[str], Dict[str, int]]:
         """
         Perform BM25 lexical search.
 
@@ -109,6 +113,9 @@ class LexicalSemanticAgent(Agent):
         if not self._bm25_index or not self._corpus:
             raise ValueError(
                 "BM25 index not created. Please index the dataset first.")
+
+        if k is None:
+            k = self._args.k or 5
 
         # Tokenize the query
         tokenized_query = tokenize(
@@ -133,9 +140,16 @@ class LexicalSemanticAgent(Agent):
                 'original_id': idx
             })
 
-        return documents
+        Logger().debug(
+            f"Lexical search for {query} returned {len(documents)} results")
 
-    def _search_semantic(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+        return (
+            [doc['content'] for doc in documents],
+            [doc['original_id'] for doc in documents],
+            {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+        )
+
+    def _search_semantic(self, query: str, k: Optional[int] = None) -> tuple[List[str], List[str], Dict[str, int]]:
         """
         Perform ColBERT semantic search.
 
@@ -146,6 +160,9 @@ class LexicalSemanticAgent(Agent):
         Returns:
             List[Dict[str, Any]]: Retrieved documents with scores.
         """
+        if k is None:
+            k = self._args.k or 5
+
         doc_ids, _ranking, scores = searcher.search(query, k=k)
 
         documents = []
@@ -157,7 +174,14 @@ class LexicalSemanticAgent(Agent):
                 'original_id': doc_id
             })
 
-        return documents
+        Logger().debug(
+            f"Semantic search for {query} returned {len(documents)} results")
+
+        return (
+            [doc['content'] for doc in documents],
+            [doc['original_id'] for doc in documents],
+            {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+        )
 
     def _create_react_prompt(self, conversation_history: List[Dict[str, str]] = None) -> str:
         """
@@ -177,36 +201,6 @@ class LexicalSemanticAgent(Agent):
             base_prompt += f"\n\nCONVERSATION HISTORY:\n{history_text}"
 
         return base_prompt
-
-    def _parse_structured_response(self, response_content: str) -> Optional[Dict[str, Any]]:
-        """
-        Parse the structured JSON response from the model.
-
-        Args:
-            response_content (str): Raw response from the model.
-
-        Returns:
-            Optional[Dict[str, Any]]: Parsed JSON response or None if parsing fails.
-        """
-        try:
-            # Try to extract JSON from the response
-            if '```json' in response_content:
-                json_start = response_content.find('```json') + 7
-                json_end = response_content.find('```', json_start)
-                json_str = response_content[json_start:json_end].strip()
-            elif '{' in response_content and '}' in response_content:
-                json_start = response_content.find('{')
-                json_end = response_content.rfind('}') + 1
-                json_str = response_content[json_start:json_end]
-            else:
-                # Fallback: try to parse the entire response
-                json_str = response_content.strip()
-
-            return json.loads(json_str)
-        except (json.JSONDecodeError, ValueError) as e:
-            Logger().warn(f"Failed to parse structured response: {e}")
-            Logger().debug(f"Raw response: {response_content}")
-            return None
 
     def _init_searcher(self) -> None:
         """
@@ -314,42 +308,24 @@ class LexicalSemanticAgent(Agent):
 
             for action in actions:
                 # Parse action string to extract function name and arguments
-                action_name = None
-                action_input = None
+                action_fn, *action_args = self._parse_action(action)
 
-                if isinstance(action, str) and '(' in action and ')' in action:
-                    # Extract function name and arguments from string like "search_lexical('query')"
-                    paren_start = action.find('(')
-                    paren_end = action.rfind(')')
+                observations, action_sources, action_usage_metrics = action_fn(
+                    *action_args)
 
-                    action_name = action[:paren_start].strip()
-                    args_str = action[paren_start + 1:paren_end].strip()
+                # Track sources
+                sources.update(action_sources)
 
-                    # Remove quotes from arguments if present
-                    if args_str.startswith(("'", '"')) and args_str.endswith(("'", '"')):
-                        action_input = args_str[1:-1]
-                    else:
-                        action_input = args_str
+                # Update usage metrics
+                usage_metrics["completion_tokens"] += action_usage_metrics.get(
+                    "completion_tokens", 0)
+                usage_metrics["prompt_tokens"] += action_usage_metrics.get(
+                    "prompt_tokens", 0)
+                usage_metrics["total_tokens"] += action_usage_metrics.get(
+                    "total_tokens", 0)
 
-                # Handle search actions
-                if action_name in ['search_lexical', 'search_semantic']:
-                    if action_name == 'search_lexical':
-                        documents = self._search_lexical(
-                            action_input, k=self._args.k or 5)
-                        Logger().debug(
-                            f"Lexical search for '{action_input}': {len(documents)} results")
-                    else:  # search_semantic
-                        documents = self._search_semantic(
-                            action_input, k=self._args.k or 5)
-                        Logger().debug(
-                            f"Semantic search for '{action_input}': {len(documents)} results")
-
-                    # Track sources
-                    sources.update(doc['original_id'] for doc in documents)
-
-                    # Create observation
-                    turn['observations'].append(
-                        [doc['content'] for doc in documents])
+                # Create observation
+                turn['observations'].append(observations)
 
             conversation_history.append(turn)
 
@@ -404,6 +380,7 @@ class LexicalSemanticAgent(Agent):
             results = pool.map(self.reason, questions)
 
         return results
+
 
 def init_agent_worker(q: Queue, l):  # type: ignore
     """
