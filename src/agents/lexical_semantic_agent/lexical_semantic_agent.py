@@ -13,7 +13,6 @@ from colbert import Indexer, Searcher
 from logger.logger import Logger
 from models.agent import IntelligentAgent, NoteBook
 from models.dataset import Dataset
-from models.question_answer import QuestionAnswer
 from utils.tokenizer import PreprocessingMethod, tokenize
 import utils.agent_worker as worker
 
@@ -211,16 +210,6 @@ class LexicalSemanticAgent(IntelligentAgent):
         self._init_searcher()
 
         return super().reason(question)
-
-    def batch_reason(self, _: List[QuestionAnswer]) -> List[NoteBook]:  # type: ignore
-        """
-        Batch reasoning is not implemented for the LexicalSemanticAgent.
-
-        Raises:
-            NotImplementedError: Batch reasoning is not implemented.
-        """
-        raise NotImplementedError(
-            "Batch reasoning is not implemented for the LexicalSemanticAgent.")
 
 
 # Default job arguments

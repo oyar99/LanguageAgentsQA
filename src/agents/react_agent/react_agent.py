@@ -8,14 +8,13 @@ from colbert import Indexer, Searcher
 import utils.agent_worker as worker
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
-from models.agent import Agent, NoteBook
+from models.agent import MultiprocessingSearchAgent, NoteBook, SelfContainedAgent
 from models.dataset import Dataset
-from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
 from utils.model_utils import supports_temperature_param
 
 
-class ReactAgent(Agent):
+class ReactAgent(MultiprocessingSearchAgent, SelfContainedAgent):
     """
     ReactAgent for reasoning over indexed documents using a retrieval-augmented generation approach.
     """
@@ -25,8 +24,6 @@ class ReactAgent(Agent):
         self._corpus = None
         self._args = args
         super().__init__(args)
-
-        self.standalone = True
 
     def index(self, dataset: Dataset) -> None:
         """
@@ -169,7 +166,7 @@ for a given query orderd by relevance, using a dense retriever.",
             raise RuntimeError(
                 "Index and corpus must be initialized before creating a searcher.")
 
-        if worker.lock is None:
+        if worker.searcher is None:
             colbert_dir = os.path.join(os.path.normpath(
                 os.getcwd() + os.sep + os.pardir), 'temp' + os.sep + 'colbert')
 
@@ -244,16 +241,6 @@ for a given query orderd by relevance, using a dense retriever.",
         notebook.update_usage_metrics(usage_metrics)
 
         return notebook
-
-    def batch_reason(self, _: list[QuestionAnswer]) -> list[NoteBook]:  # type: ignore
-        """
-        Uses its question index to answer the questions.
-
-        Raises:
-            NotImplementedError: Batch reasoning is not implemented for the colbertv2 agent.
-        """
-        raise NotImplementedError(
-            "Batch reasoning is not implemented for the ReactAgent.")
 
 
 default_job_args = {

@@ -8,7 +8,6 @@ from colbert import Indexer, Searcher
 from logger.logger import Logger
 from models.agent import IntelligentAgent, NoteBook
 from models.dataset import Dataset
-from models.question_answer import QuestionAnswer
 from plugins.search_pruner import search_pruner
 import utils.agent_worker as worker
 
@@ -139,16 +138,6 @@ class ReactAgentCustom(IntelligentAgent):
         self._init_searcher()
 
         return super().reason(question)
-
-    def batch_reason(self, _: list[QuestionAnswer]) -> list[NoteBook]:  # type: ignore
-        """
-        Uses its question index to answer the questions.
-
-        Raises:
-            NotImplementedError: Batch reasoning is not implemented for the ReactAgentCustom.
-        """
-        raise NotImplementedError(
-            "Batch reasoning is not implemented for the ReactAgentCustom.")
 
 
 # Default job arguments

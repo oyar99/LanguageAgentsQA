@@ -189,7 +189,59 @@ class Agent(ABC):
         return results
 
 
-class IntelligentAgent(Agent, ABC):
+class MultiprocessingSearchAgent(Agent, ABC):
+    """
+    An abstract class representing an agent that supports multiprocessing reasoning.
+    It extends the Agent class and provides an advanced implementation for multiprocessing reasoning that exposes
+    two resources to the worker processes: a lock and a searcher accesible via the utils.agent_worker module.
+    """
+
+    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
+        """
+        Processes the questions in parallel using multiprocessing.
+        This function is used to speed up the reasoning process by using multiple processes.
+        It creates a pool of workers and maps the questions to the reason function.
+
+        This function can be overridden by the agent to implement a custom multiprocessing strategy specially needed if 
+        the agent will use another device (GPU) to process the questions.
+
+        Args:
+            question (list[str]): the given questions
+
+        Returns:
+            notebook (list[Notebook]): the detailed findings to help answer all questions (context)
+        """
+        l = Lock()
+
+        results = []
+        with Pool(min(42, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
+            results = pool.map(self.reason, questions)
+
+        return results
+
+    def batch_reason(self, _: list[QuestionAnswer]) -> list[NoteBook]:  # type: ignore
+        """
+        Uses its question index to answer the questions.
+
+        Raises:
+            NotImplementedError: Batch reasoning is not implemented for MultiprocessingSearchAgent.
+        """
+        raise NotImplementedError(
+            "Batch reasoning is not implemented for MultiprocessingSearchAgent.")
+
+
+class SelfContainedAgent(Agent, ABC):
+    """
+    An abstract class representing a self-contained agent that can answer questions directly.
+    It extends the Agent class and sets the standalone attribute to True.
+    """
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.standalone = True
+
+
+class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
     """
     An abstract class representing an intelligent agent that can reason over a dataset.
     It extends the Agent class and provides additional functionality for reasoning.
@@ -397,7 +449,7 @@ class IntelligentAgent(Agent, ABC):
                 action_func, *action_args = self._parse_action(action)
 
                 sig = signature(action_func)
-                has_context = sig.parameters.get('context', 'None')
+                has_context = sig.parameters.get('context', None)
 
                 # Execute the action function with or without context
                 # Context explains why the action is being taken, and actions can use this information
@@ -444,29 +496,6 @@ class IntelligentAgent(Agent, ABC):
         notebook.update_usage_metrics(usage_metrics)
 
         return notebook
-
-    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
-        """
-        Processes the questions in parallel using multiprocessing.
-        This function is used to speed up the reasoning process by using multiple processes.
-        It creates a pool of workers and maps the questions to the reason function.
-
-        This function can be overridden by the agent to implement a custom multiprocessing strategy specially needed if 
-        the agent will use another device (GPU) to process the questions.
-
-        Args:
-            question (list[str]): the given questions
-
-        Returns:
-            notebook (list[Notebook]): the detailed findings to help answer all questions (context)
-        """
-        l = Lock()
-
-        results = []
-        with Pool(min(42, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
-            results = pool.map(self.reason, questions)
-
-        return results
 
 
 # Default job arguments
