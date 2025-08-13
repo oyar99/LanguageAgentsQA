@@ -347,7 +347,7 @@ def extract_qa_pair_with_question(dataset: Dataset, eval_item: dict[str, Any]) -
 
     Logger().debug(f"Question found: {question['question']}")
 
-    content = (eval_item['response']['body']['choices'][0]['message']['content'].strip()
+    content = (str(eval_item['response']['body']['choices'][0]['message']['content']).strip()
                if eval_item['response']['body']['choices'][0]['message'].get('content') else None)
 
     if content is None:

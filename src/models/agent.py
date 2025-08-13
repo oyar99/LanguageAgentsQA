@@ -5,9 +5,11 @@ from inspect import signature
 import json
 from multiprocessing import Lock, Pool, cpu_count
 import os
+from string import Template
 from typing import Any, Callable, Dict, Optional, Set, Tuple
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger, MainProcessLogger, worker_init
+from models.action import Action
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
@@ -245,13 +247,49 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
     """
     An abstract class representing an intelligent agent that can reason over a dataset.
     It extends the Agent class and provides additional functionality for reasoning.
+
+    Examples can be provided to help the agent understand how it can best use the available tools for reasoning.
+    Please make sure the examples adhere to the ReACT framework and are formatted correctly for better results.
     """
 
-    def __init__(self, actions: Dict[str, Callable[..., Any]], args):
+    def __init__(self, actions: Dict[str, Action], examples: str, args):
         super().__init__(args)
-        self._actions = actions
         self._max_iteratios = 8
-        self._prompt = ""
+
+        if len(actions) == 0:
+            Logger().error("At least one action must be provided")
+            raise ValueError("At least one action must be provided")
+
+        self._actions = actions
+
+        # Build tools prompt section based on the given function signatures ignoring the context parameter
+        tools_prompt = "\n".join([
+            (
+                f"- **{name}"
+                f"({', '.join([p for p in signature(act.function).parameters.keys() if p != 'context'])})**:"
+                f" {act.description}"
+            )
+            for name, act in actions.items()
+        ])
+
+        # Pick the fist action to use as an example on how the model should format calls to actions
+        tool_format_example = (
+            f"\"actions\": [\""
+            f"{list(actions.keys())[0]}"
+            # pylint: disable-next=line-too-long
+            f"({', '.join([p for p in signature(list(actions.values())[0].function).parameters.keys() if p != 'context'])})"
+            f"\"]"
+        )
+
+        template = Template(REACT_AGENT_PROMPT)
+
+        self._prompt = template.substitute(
+            tools=tools_prompt, tool_format_example=tool_format_example)
+
+        if len(examples) > 0:
+            self._prompt += f"\n## EXAMPLES\n{examples}"
+
+        Logger().debug(f"Agent prompt: {self._prompt}")
 
     def _parse_structured_response(self, response_content: str) -> Optional[Dict[str, Any]]:
         """
@@ -503,3 +541,50 @@ default_job_args = {
     'frequency_penalty': 0.0,
     'presence_penalty': 0.0
 }
+
+REACT_AGENT_PROMPT = '''You are an intelligent QA agent that will be presented with a question, and you will \
+need to search for relevant documents that support the answer to the question. You will then use these documents to provide an EXACT answer, \
+using only words found in the documents when possible. Under no circumstances should you include any additional \
+commentary, explanations, reasoning, or notes in your final response. \
+If the answer can be a single word (e.g., Yes, No, a date, or an object), please provide just that word.
+
+You should decompose the question into multiple sub-questions if necessary, and search for relevant documents for each sub-question. \
+You can formulate the queries as you find appropriate to increase the chances of retrieving relevant documents.
+
+You can choose the following tools to find relevant documents.
+
+## AVAILABLE TOOLS
+
+$tools
+
+You can choose one or more tool calls to gather information. Use them wisely based on the intent of the query.
+
+## RESPONSE FORMAT
+
+Respond with exactly one JSON object per response and do not include any text before or after the JSON object. \
+Use either the intermediate format or the final format, never both in the same response.
+
+Your intermediate responses must be in valid JSON format with the following structure:
+
+```json
+{
+    "thought": "Your reasoning process that clearly explains what you are trying to find out",
+    $tool_format_example
+}
+```
+
+During intermediate responses, actions must not be empty and must contain at least one action.
+
+Your final answer must be formatted in valid JSON format with the following structure:
+
+```json
+{
+    "thought": "Your final reasoning process that clearly explains how you arrived at the final answer and why the answer is both correct and complete",
+    "final_answer": "your final answer formatted as a string"
+}
+```
+
+If the answer cannot be inferred with the information found in the documents, you must then set final_answer to "N/A".
+
+Ensure all string values in your JSON response have properly escaped quotes when necessary if using double quotes.
+'''

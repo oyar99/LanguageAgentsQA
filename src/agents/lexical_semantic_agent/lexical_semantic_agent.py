@@ -3,14 +3,14 @@
 This agent automatically decides between BM25 lexical search and ColBERT semantic search
 based on the nature of the query, following ReAct framework with manual tool invocation.
 """
-# pylint: disable=duplicate-code
 import os
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
 from rank_bm25 import BM25Okapi as BM25Ranker
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
 from logger.logger import Logger
+from models.action import Action
 from models.agent import IntelligentAgent, NoteBook
 from models.dataset import Dataset
 from utils.tokenizer import PreprocessingMethod, tokenize
@@ -30,13 +30,18 @@ class LexicalSemanticAgent(IntelligentAgent):
         self._colbert_searcher = None
         self._args = args
         actions = {
-            "search_lexical": self._search_lexical,
-            "search_semantic": self._search_semantic,
+            "search_lexical": Action(
+                "Performs exact keyword matching using BM25 algorithm. \
+Best for one-word queries or specific terms when precise term matching is needed",
+                self._search_lexical
+            ),
+            "search_semantic": Action(
+                "Performs meaning-based search using ColBERT. \
+Best for conceptual queries, or natural language questions that require understanding of context.",
+                self._search_semantic,
+            ),
         }
-        super().__init__(actions, args)
-
-        self.standalone = True
-        self._prompt = REACT_AGENT_CUSTOM_PROMPT
+        super().__init__(actions, PROMPT_EXAMPLES_TOOLS, args)
 
     def index(self, dataset: Dataset) -> None:
         """
@@ -94,7 +99,7 @@ class LexicalSemanticAgent(IntelligentAgent):
 
         self._index = dataset.name or 'index'
 
-    def _search_lexical(self, query: str, k: Optional[int] = None) -> tuple[List[str], List[str], Dict[str, int]]:
+    def _search_lexical(self, query: str) -> tuple[List[str], List[str], Dict[str, int]]:
         """
         Perform BM25 lexical search.
 
@@ -109,8 +114,7 @@ class LexicalSemanticAgent(IntelligentAgent):
             raise ValueError(
                 "BM25 index not created. Please index the dataset first.")
 
-        if k is None:
-            k = self._args.k or 5
+        k = self._args.k or 5
 
         # Tokenize the query
         tokenized_query = tokenize(
@@ -144,7 +148,7 @@ class LexicalSemanticAgent(IntelligentAgent):
             {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
         )
 
-    def _search_semantic(self, query: str, k: Optional[int] = None) -> tuple[List[str], List[str], Dict[str, int]]:
+    def _search_semantic(self, query: str) -> tuple[List[str], List[str], Dict[str, int]]:
         """
         Perform ColBERT semantic search.
 
@@ -155,8 +159,7 @@ class LexicalSemanticAgent(IntelligentAgent):
         Returns:
             List[Dict[str, Any]]: Retrieved documents with scores.
         """
-        if k is None:
-            k = self._args.k or 5
+        k = self._args.k or 5
 
         doc_ids, _ranking, scores = worker.searcher.search(query, k=k)
 
@@ -220,57 +223,7 @@ default_job_args = {
     'presence_penalty': 0.0
 }
 
-REACT_AGENT_CUSTOM_PROMPT = '''You are an intelligent QA agent that will be presented with a question, and you will \
-need to search for relevant documents that support the answer to the question. You will then use these documents to provide an EXACT answer, \
-using only words found in the documents when possible. UNDER no circumstances should you include any additional \
-commentary, explanations, reasoning, or notes in your final response. \
-If the answer can be a single word (e.g., Yes, No, a date, or an object), please provide just that word.
-
-You should decompose the question into multiple sub-questions if necessary, and search for relevant documents for each sub-question. \
-You can formulate the queries as you find appropriate to increase the chances of retrieving relevant documents. \
-
-You can choose the following tools to find relevant documents.
-
-## AVAILABLE TOOLS:
-
-- **search_lexical(query)**: Performs exact keyword matching using BM25 algorithm. Best for one-word queries or specific terms when precise term matching is needed.
-
-- **search_semantic(query)**: Performs meaning-based search using ColBERT. Best for conceptual queries, or natural language questions that require understanding of context.
-
-You can choose one or more tool calls to gather information. Use them wisely based on the intent of the query.
-
-## RESPONSE FORMAT
-
-Respond with exactly one JSON object per response and do not include any text before or after the JSON object. \
-Use either the intermediate format or the final format, never both in the same response.
-
-Your intermediate responses must be in valid JSON format with the following structure:
-
-```json
-{
-    "thought": "Your reasoning process that clearly explains what you are trying to find out",
-    "actions": ["search_lexical('search query')"]
-}
-```
-
-During intermediate responses, actions must not be empty and must contain at least one action.
-
-Your final answer must be formatted in valid JSON format with the following structure:
-
-```json
-{
-    "thought": "Your final reasoning process that clearly explains how you arrived at the final answer and why the answer is both correct and complete",
-    "final_answer": "your final answer"
-}
-```
-
-If the answer cannot be inferred with the information found in the documents, you must then set final_answer to "N/A".
-
-Ensure all string values in your JSON response have properly escaped quotes when necessary if using double quotes.
-
-## EXAMPLES:
-
-Question: "Were Scott Derrickson and Ed Wood of the same nationality?"
+PROMPT_EXAMPLES_TOOLS = '''Question: "Were Scott Derrickson and Ed Wood of the same nationality?"
 
 Iteration 1:
 ```json

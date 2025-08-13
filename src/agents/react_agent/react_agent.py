@@ -1,6 +1,5 @@
 """ReactAgent for reasoning over indexed documents using a retrieval-augmented generation approach.
 """
-# pylint: disable=duplicate-code
 import json
 import os
 from colbert.infra import Run, RunConfig, ColBERTConfig
