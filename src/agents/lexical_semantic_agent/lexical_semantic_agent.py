@@ -181,6 +181,7 @@ Best for conceptual queries, or natural language questions that require understa
             {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
         )
 
+    # pylint: disable=duplicate-code
     def _init_searcher(self) -> None:
         """
         Initializes the searcher for the ReactAgentCustom.
