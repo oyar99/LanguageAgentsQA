@@ -1,5 +1,6 @@
 """ReactAgentCustom for reasoning using custom instruction fine-tuned model with structured output schema.
 """
+# pylint: disable=duplicate-code
 import os
 from typing import Dict, List
 from colbert.infra import Run, RunConfig, ColBERTConfig
@@ -107,7 +108,6 @@ class ReactAgentCustom(IntelligentAgent):
                 [doc['original_id'] for doc in pruned_documents],
                 usage_metrics)
 
-    # pylint: disable=duplicate-code
     def _init_searcher(self) -> None:
         """
         Initializes the searcher for the ReactAgentCustom.
@@ -140,7 +140,7 @@ class ReactAgentCustom(IntelligentAgent):
         self._init_searcher()
 
         return super().reason(question)
-    
+
 
 # Default job arguments
 default_job_args = {
