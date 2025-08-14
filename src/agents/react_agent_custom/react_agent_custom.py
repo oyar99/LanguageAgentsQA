@@ -150,7 +150,9 @@ default_job_args = {
     'presence_penalty': 0.0
 }
 
-PROMPT_EXAMPLES_TOOLS = '''Question: "Were Scott Derrickson and Ed Wood of the same nationality?"
+PROMPT_EXAMPLES_TOOLS = '''### Example 1
+
+Question: "Were Scott Derrickson and Ed Wood of the same nationality?"
 
 Iteration 1:
 ```json
@@ -179,7 +181,7 @@ Iteration 3:
 }
 ```
 
-Consider another example:
+### Example 2
 
 Question: "In which county is Kimbrough Memorial Stadium located?"
 
@@ -224,4 +226,5 @@ Iteration 5:
     "thought": "Kimbrough Memorial Stadium is in Canyon, Texas, and Canyon is in Randall County.",
     "final_answer": "Randall County"
 }
+```
 '''
