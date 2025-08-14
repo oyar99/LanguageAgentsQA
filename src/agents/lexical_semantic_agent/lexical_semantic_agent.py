@@ -3,6 +3,7 @@
 This agent automatically decides between BM25 lexical search and ColBERT semantic search
 based on the nature of the query, following ReAct framework with manual tool invocation.
 """
+# pylint: disable=duplicate-code
 import os
 from typing import Dict, List, Any
 

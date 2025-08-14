@@ -403,7 +403,7 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
         Logger().error(f"Invalid action format: {action}")
         raise ValueError(f"Invalid action format: {action}")
 
-    # pylint: disable-next=too-many-locals
+    # pylint: disable-next=too-many-locals,too-many-statements
     def reason(self, question: str) -> NoteBook:
         """
         Reason over the indexed dataset to answer the question.
@@ -429,7 +429,7 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
             "total_tokens": 0
         }
 
-        while iteration < self._max_iteratios and final_answer is None:
+        while final_answer is None:
             Logger().debug(
                 f"Iteration {iteration + 1} for question: {question}")
             iteration += 1
@@ -441,6 +441,11 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
 
             messages.extend([{"role": "system", "content": memory}
                             for memory in stm])
+
+            # If this is the last iteration, we force the model to provide a final answer
+            if iteration == self._max_iteratios:
+                messages.append(
+                    {"role": "system", "content": REACT_AGENT_LAST_ITERATION_PROMPT})
 
             Logger().debug(f"Sending messages to model: {messages}")
 
@@ -477,6 +482,14 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
             thought = structured_response.get("thought")
             actions = structured_response.get("actions", [])
             final_answer = structured_response.get("final_answer", None)
+
+            # If we reached max iterations and no final answer, force it to N/A
+            # Do not execute any more actions to save cost
+            if iteration == self._max_iteratios and final_answer is None:
+                Logger().warn(
+                    f"Max iterations reached for question: {question} without a final answer.")
+                final_answer = "N/A"
+                break
 
             turn = {'thought': thought, 'actions': actions, 'observations': []}
 
@@ -584,7 +597,13 @@ Your final answer must be formatted in valid JSON format with the following stru
 }
 ```
 
-If the answer cannot be inferred with the information found in the documents, you must then set final_answer to "N/A".
-
 Ensure all string values in your JSON response have properly escaped quotes when necessary if using double quotes.
+'''
+
+REACT_AGENT_LAST_ITERATION_PROMPT = '''You must now try to provide a final answer with \
+the information gathered so far even if the answer may be incomplete or not fully correct to the best of your knowledge. \
+
+Take a moment to revisit the question, reflect on the information you have gathered, and provide the best possible answer.
+
+Unless strictly necessary, you will answer with 'N/A' if you definitely cannot provide an answer.
 '''
