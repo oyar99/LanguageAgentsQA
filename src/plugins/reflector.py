@@ -2,6 +2,7 @@
 This module provides a Reflector class that evaluates the correctness of answers based on a 
 given context and thought process.
 """
+# pylint: disable=duplicate-code
 from typing import Dict, Tuple
 
 from azure_open_ai.chat_completions import chat_completions
