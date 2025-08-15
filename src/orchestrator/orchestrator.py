@@ -11,6 +11,7 @@ from agents.oracle.oracle import Oracle
 from agents.react_agent.react_agent import ReactAgent
 from agents.react_agent_custom.react_agent_custom import ReactAgentCustom
 from agents.lexical_semantic_agent.lexical_semantic_agent import LexicalSemanticAgent
+from agents.react_retriever.react_retriever import ReactRetriever
 from data.hotpot.hotpot import Hotpot
 from data.locomo.locomo import Locomo
 from data.musique.musique import MuSiQue
@@ -53,6 +54,7 @@ class Orchestrator:
             'react': ReactAgent,
             'react_custom': ReactAgentCustom,
             'lexical_semantic': LexicalSemanticAgent,
+            'react_retriever': ReactRetriever,
         }
 
         if args.agent not in agents:

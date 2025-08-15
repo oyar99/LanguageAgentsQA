@@ -13,6 +13,7 @@ from models.action import Action
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
+from plugins.reflector import reflector
 from utils.agent_worker import init_agent_worker
 from utils.model_utils import supports_temperature_param
 
@@ -255,6 +256,7 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
     def __init__(self, actions: Dict[str, Action], examples: str, args):
         super().__init__(args)
         self._max_iteratios = 8
+        self._enable_reflection = False
 
         if len(actions) == 0:
             Logger().error("At least one action must be provided")
@@ -429,18 +431,15 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
             "total_tokens": 0
         }
 
+        messages = [
+            {"role": "system", "content": self._prompt},
+            {"role": "user", "content": question}
+        ]
+
         while final_answer is None:
             Logger().debug(
                 f"Iteration {iteration + 1} for question: {question}")
             iteration += 1
-
-            messages = [
-                {"role": "system", "content": self._prompt},
-                {"role": "user", "content": question}
-            ]
-
-            messages.extend([{"role": "system", "content": memory}
-                            for memory in stm])
 
             # If this is the last iteration, we force the model to provide a final answer
             if iteration == self._max_iteratios:
@@ -491,7 +490,7 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
                 final_answer = "N/A"
                 break
 
-            turn = {'thought': thought, 'actions': actions, 'observations': []}
+            turn = {'thought': thought, 'actions': actions, 'observations': [], 'final_answer': final_answer}
 
             for action in actions:
                 # Parse action string to extract function name and arguments
@@ -523,10 +522,63 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
                 # Track sources
                 sources.update(action_sources)
 
+            filtered_turn = {k: v for k, v in turn.items() if v not in (None, "", [], {})}
+            messages.append({"role": "system", "content": json.dumps(filtered_turn)})
             stm.append(json.dumps(turn))
 
         if final_answer is None:
             final_answer = "N/A"
+
+        if self._enable_reflection:
+            reflect_feedback, reflection_usage_metrics = reflector(
+                question, final_answer, json.dumps([json.loads(s) for s in stm]))
+
+            usage_metrics["completion_tokens"] += reflection_usage_metrics.get(
+                "completion_tokens", 0)
+            usage_metrics["prompt_tokens"] += reflection_usage_metrics.get(
+                "prompt_tokens", 0)
+            usage_metrics["total_tokens"] += reflection_usage_metrics.get(
+                "total_tokens", 0)
+
+            Logger().debug(f"Reflection feedback: {reflect_feedback}")
+
+            messages.append({"role": "user", "content": reflect_feedback})
+            messages.append({"role": "system", "content": REACT_AGENT_SELF_REFLECT_PROMPT})
+
+            open_ai_request = {
+                "custom_id": "react_reflection",
+                "model": self._args.model,
+                "messages": messages,
+                "temperature": default_job_args['temperature']
+                if supports_temperature_param(self._args.model) else None,
+                "frequency_penalty": default_job_args['frequency_penalty'],
+                "presence_penalty": default_job_args['presence_penalty'],
+                "max_completion_tokens": 1000,
+            }
+
+            Logger().debug(f"Sending reflection request: {open_ai_request}")
+
+            result = chat_completions([open_ai_request])[0][0]
+
+            # Update usage metrics
+            usage_metrics["completion_tokens"] += result.usage.completion_tokens
+            usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
+            usage_metrics["total_tokens"] += result.usage.total_tokens
+
+            response_content = result.choices[0].message.content.strip()
+
+            Logger().debug(f"Model response: {response_content}")
+
+            # Parse the structured response
+            structured_response = self._parse_structured_response(
+                response_content)
+
+            new_final_answer = structured_response.get("final_answer", None)
+
+            if new_final_answer is not None and str(new_final_answer).strip() != "N/A":
+                # Only update answer if it is not "N/A"
+                # We prefer to keep the possibly incomplete answer from the first iteration than no answer at all
+                final_answer = new_final_answer
 
         Logger().info(
             f"Final answer for question '{question}': {final_answer}")
@@ -606,4 +658,11 @@ the information gathered so far even if the answer may be incomplete or not full
 Take a moment to revisit the question, reflect on the information you have gathered, and provide the best possible answer.
 
 Unless strictly necessary, you will answer with 'N/A' if you definitely cannot provide an answer.
+'''
+
+REACT_AGENT_SELF_REFLECT_PROMPT = '''Based on the provided feedback, \
+you should reflect on your previous response and reasoning process. \
+Now provide a final answer that takes into account the feedback and any additional insights you have gained. \
+Make sure to follow the same response format as before, including the thought process and final answer.
+You should not include any additional commentary, explanations, or notes in your final response.
 '''
