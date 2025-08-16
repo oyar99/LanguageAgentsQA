@@ -295,6 +295,7 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
 
         Logger().debug(f"Agent prompt: {self._prompt}")
 
+    # pylint: disable-next=too-many-branches
     def _parse_action(self, action: str) -> Tuple[Callable[..., Tuple[list[str], list[str], Dict[str, str]]], ...]:
         """
         Parse the action string to extract structured actions, and executes thems.
