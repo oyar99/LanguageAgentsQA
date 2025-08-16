@@ -13,9 +13,10 @@ from models.action import Action
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
-from plugins.reflector import reflector
+from plugins.reflector import Reflector
 from utils.agent_worker import init_agent_worker
 from utils.model_utils import supports_temperature_param
+from utils.structure_response import parse_structured_response
 
 
 class NoteBook:
@@ -257,6 +258,7 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
         super().__init__(args)
         self._max_iteratios = 8
         self._enable_reflection = False
+        self._enable_interleave_reflection = False
 
         if len(actions) == 0:
             Logger().error("At least one action must be provided")
@@ -292,37 +294,6 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
             self._prompt += f"\n## EXAMPLES\n{examples}"
 
         Logger().debug(f"Agent prompt: {self._prompt}")
-
-    def _parse_structured_response(self, response_content: str) -> Optional[Dict[str, Any]]:
-        """
-        Parse the structured JSON response. It attempts to extract JSON content from the response string using 
-        various common patterns such as markdown code blocks or JSON-like structures.
-
-        Args:
-            response_content (str): Raw response from the model.
-
-        Returns:
-            Optional[Dict[str, Any]]: Parsed JSON response or None if parsing fails.
-        """
-        try:
-            # Try to extract JSON from the response
-            if '```json' in response_content:
-                json_start = response_content.find('```json') + 7
-                json_end = response_content.find('```', json_start)
-                json_str = response_content[json_start:json_end].strip()
-            elif '{' in response_content and '}' in response_content:
-                json_start = response_content.find('{')
-                json_end = response_content.rfind('}') + 1
-                json_str = response_content[json_start:json_end]
-            else:
-                # Fallback: try to parse the entire response
-                json_str = response_content.strip()
-
-            return json.loads(json_str)
-        except (json.JSONDecodeError, ValueError) as e:
-            Logger().warn(f"Failed to parse structured response: {e}")
-            Logger().debug(f"Raw response: {response_content}")
-            return None
 
     def _parse_action(self, action: str) -> Tuple[Callable[..., Tuple[list[str], list[str], Dict[str, str]]], ...]:
         """
@@ -365,10 +336,21 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
                         quote_char = char
                         current_arg += char
                     elif in_quotes and char == quote_char:
-                        # Ending a quoted string
-                        in_quotes = False
-                        current_arg += char
-                        quote_char = None
+                        # Check if this is truly the end of the quoted string
+                        # Look ahead to see if the next non-whitespace character is a comma or end of string
+                        # Handles edge cases like "search('jon's house, or a car', 2)"
+                        j = i + 1
+                        while j < len(args_str) and args_str[j].isspace():
+                            j += 1
+
+                        if j >= len(args_str) or args_str[j] == ',':
+                            # This is the closing quote
+                            in_quotes = False
+                            current_arg += char
+                            quote_char = None
+                        else:
+                            # This is a quote inside the string, not the closing quote
+                            current_arg += char
                     elif not in_quotes and char == ',':
                         # Found a separator outside quotes
                         action_input.append(current_arg.strip())
@@ -405,7 +387,126 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
         Logger().error(f"Invalid action format: {action}")
         raise ValueError(f"Invalid action format: {action}")
 
-    # pylint: disable-next=too-many-locals,too-many-statements
+    # pylint: disable-next=too-many-arguments,too-many-positional-arguments
+    def _reflect(
+        self,
+        reflector: Reflector,
+        stm: list[str],
+        messages: list[Dict[str, str]],
+        iteration: int,
+        force_final_answer: bool = False
+    ) -> Tuple[str, Optional[Dict[str, str]], Dict[str, str]]:
+        """
+        Reflect on the current state of the reasoning process with a multi-agent architecture
+
+        Args:
+            question (str): The original question being addressed.
+            stm (list[str]): The current state of the reasoning process, typically a list of \
+thoughts and actions taken so far.
+            messages (list[Dict[str, str]]): The messages exchanged during the reasoning process, \
+including user inputs and system responses.
+
+        Returns:
+            Optional[str]: Feedback, or None if current reasoning process is okay
+        """
+        reflect_feedback = reflector.reflect_on_chain(
+            [json.loads(s) for s in stm])
+
+        usage_metrics = {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0
+        }
+
+        reflection_usage_metrics = reflector.get_usage_metrics()
+
+        usage_metrics["completion_tokens"] += reflection_usage_metrics.get(
+            "completion_tokens", 0)
+        usage_metrics["prompt_tokens"] += reflection_usage_metrics.get(
+            "prompt_tokens", 0)
+        usage_metrics["total_tokens"] += reflection_usage_metrics.get(
+            "total_tokens", 0)
+
+        if reflect_feedback:
+            Logger().debug(
+                f"Interleaved reflection feedback: {reflect_feedback}")
+
+            new_messages = messages.copy()
+            # TODO: This is a hack to add the state of the reasoning process to the messages.
+            # Need to handle this better once POC is working
+            new_messages.append(
+                {"role": "system", "content": json.dumps(stm[0])})
+            new_messages.append(
+                {"role": "user", "content": reflect_feedback})
+            new_messages.append(
+                {"role": "system", "content":
+                         REACT_AGENT_REFLECTION_PROMPT
+                         if not force_final_answer else REACT_AGENT_LAST_ITERATION_PROMPT})
+
+            open_ai_request = {
+                "custom_id": f"react_interleaved_reflection_{iteration}",
+                "model": self._args.model,
+                "messages": new_messages,
+                "temperature": default_job_args['temperature']
+                if supports_temperature_param(self._args.model) else None,
+                "frequency_penalty": default_job_args['frequency_penalty'],
+                "presence_penalty": default_job_args['presence_penalty'],
+                "max_completion_tokens": 1000,
+            }
+
+            Logger().debug(
+                f"Sending interleaved reflection request: {open_ai_request}")
+
+            result = chat_completions([open_ai_request])[0][0]
+
+            # Update usage metrics
+            usage_metrics["completion_tokens"] += result.usage.completion_tokens
+            usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
+            usage_metrics["total_tokens"] += result.usage.total_tokens
+
+            response_content = result.choices[0].message.content.strip()
+
+            Logger().debug(f"Model response: {response_content}")
+
+            # Parse the structured response
+            structured_response = parse_structured_response(
+                response_content)
+
+            return reflect_feedback, structured_response, usage_metrics
+
+        return None, None, usage_metrics
+
+    def _turn_from_response_factory(self, structured_response: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Creates a turn from the structured response.
+
+        Args:
+            structured_response (Dict[str, Any]): The structured response from the model.
+
+        Returns:
+            Dict[str, Any]: The extracted turn.
+        """
+        turn = {
+            "thought": structured_response.get("thought", ""),
+            "actions": structured_response.get("actions", []),
+            "observations": [],
+            "final_answer": structured_response.get("final_answer", None)
+        }
+        return turn
+
+    def _filtered_turn(self, turn: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Returns a filtered turn for the given job.
+
+        Args:
+            job (dict): The job dictionary to remove empty fields from.
+
+        Returns:
+            dict: A dictionary representing the filtered turn.
+        """
+        return {k: v for k, v in turn.items() if v not in (None, "", [], {})}
+
+    # pylint: disable-next=too-many-locals,too-many-statements,too-many-branches
     def reason(self, question: str) -> NoteBook:
         """
         Reason over the indexed dataset to answer the question.
@@ -435,6 +536,8 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
             {"role": "system", "content": self._prompt},
             {"role": "user", "content": question}
         ]
+
+        reflector = Reflector(question=question)
 
         while final_answer is None:
             Logger().debug(
@@ -471,16 +574,17 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
             Logger().debug(f"Model response: {response_content}")
 
             # Parse the structured response
-            structured_response = self._parse_structured_response(
+            structured_response = parse_structured_response(
                 response_content)
 
             if structured_response is None:
                 # If parsing failed, give up. In the future, we will implement self-reflection to improve the response.
                 break
 
-            thought = structured_response.get("thought")
-            actions = structured_response.get("actions", [])
-            final_answer = structured_response.get("final_answer", None)
+            turn = self._turn_from_response_factory(structured_response)
+            thought = turn["thought"]
+            actions = turn["actions"]
+            final_answer = turn["final_answer"]
 
             # If we reached max iterations and no final answer, force it to N/A
             # Do not execute any more actions to save cost
@@ -490,7 +594,55 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
                 final_answer = "N/A"
                 break
 
-            turn = {'thought': thought, 'actions': actions, 'observations': [], 'final_answer': final_answer}
+            turn = {'thought': thought, 'actions': actions,
+                    'observations': [], 'final_answer': final_answer}
+
+            if self._enable_interleave_reflection:
+                reflect_feedback, structured_response_with_feedback, reflection_usage_metrics = self._reflect(
+                    reflector,
+                    [json.dumps(self._filtered_turn(turn))],
+                    messages,
+                    iteration,
+                )
+
+                # Update usage metrics with reflection metrics
+                usage_metrics["completion_tokens"] += reflection_usage_metrics.get(
+                    "completion_tokens", 0)
+                usage_metrics["prompt_tokens"] += reflection_usage_metrics.get(
+                    "prompt_tokens", 0)
+                usage_metrics["total_tokens"] += reflection_usage_metrics.get(
+                    "total_tokens", 0)
+
+                if structured_response_with_feedback:
+                    structured_response = structured_response_with_feedback
+
+                    # Save previous turn to STM
+                    filtered_turn = self._filtered_turn(turn)
+                    messages.append(
+                        {"role": "system", "content": json.dumps(filtered_turn)})
+                    stm.append(json.dumps(filtered_turn))
+
+                    # Append feedback in conversation
+                    messages.append(
+                        {"role": "user", "content": reflect_feedback})
+                    messages.append(
+                        {"role": "system", "content":
+                         REACT_AGENT_REFLECTION_PROMPT
+                         if iteration != self._max_iteratios else REACT_AGENT_LAST_ITERATION_PROMPT})
+
+                    # Update turn with feedback
+                    turn = self._turn_from_response_factory(
+                        structured_response)
+                    thought = turn["thought"]
+                    actions = turn["actions"]
+                    final_answer = turn["final_answer"]
+
+                    # If this was the last iteration, and we do not have a final answer, we force it to N/A
+                    if iteration == self._max_iteratios and final_answer is None:
+                        Logger().warn(
+                            f"Max iterations reached for question: {question} without a final answer.")
+                        final_answer = "N/A"
+                        break
 
             for action in actions:
                 # Parse action string to extract function name and arguments
@@ -522,16 +674,20 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
                 # Track sources
                 sources.update(action_sources)
 
-            filtered_turn = {k: v for k, v in turn.items() if v not in (None, "", [], {})}
-            messages.append({"role": "system", "content": json.dumps(filtered_turn)})
-            stm.append(json.dumps(turn))
+            # Update the reflector with the observations
+            reflector.update_observations(turn['observations'])
+
+            filtered_turn = self._filtered_turn(turn)
+            messages.append(
+                {"role": "system", "content": json.dumps(filtered_turn)})
+            stm.append(json.dumps(filtered_turn))
 
         if final_answer is None:
             final_answer = "N/A"
 
         if self._enable_reflection:
-            reflect_feedback, reflection_usage_metrics = reflector(
-                question, final_answer, json.dumps([json.loads(s) for s in stm]))
+            _, structured_response_with_feedback, reflection_usage_metrics = self._reflect(
+                reflector, stm, messages, iteration, force_final_answer=True)
 
             usage_metrics["completion_tokens"] += reflection_usage_metrics.get(
                 "completion_tokens", 0)
@@ -540,44 +696,12 @@ class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
             usage_metrics["total_tokens"] += reflection_usage_metrics.get(
                 "total_tokens", 0)
 
-            Logger().debug(f"Reflection feedback: {reflect_feedback}")
-
-            messages.append({"role": "user", "content": reflect_feedback})
-            messages.append({"role": "system", "content": REACT_AGENT_SELF_REFLECT_PROMPT})
-
-            open_ai_request = {
-                "custom_id": "react_reflection",
-                "model": self._args.model,
-                "messages": messages,
-                "temperature": default_job_args['temperature']
-                if supports_temperature_param(self._args.model) else None,
-                "frequency_penalty": default_job_args['frequency_penalty'],
-                "presence_penalty": default_job_args['presence_penalty'],
-                "max_completion_tokens": 1000,
-            }
-
-            Logger().debug(f"Sending reflection request: {open_ai_request}")
-
-            result = chat_completions([open_ai_request])[0][0]
-
-            # Update usage metrics
-            usage_metrics["completion_tokens"] += result.usage.completion_tokens
-            usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
-            usage_metrics["total_tokens"] += result.usage.total_tokens
-
-            response_content = result.choices[0].message.content.strip()
-
-            Logger().debug(f"Model response: {response_content}")
-
-            # Parse the structured response
-            structured_response = self._parse_structured_response(
-                response_content)
-
-            new_final_answer = structured_response.get("final_answer", None)
+            new_final_answer = structured_response_with_feedback.get(
+                "final_answer", None)
 
             if new_final_answer is not None and str(new_final_answer).strip() != "N/A":
                 # Only update answer if it is not "N/A"
-                # We prefer to keep the possibly incomplete answer from the first iteration than no answer at all
+                # We prefer to keep the possibly incomplete answer from the original iteration than no answer at all
                 final_answer = new_final_answer
 
         Logger().info(
@@ -645,7 +769,7 @@ Your final answer must be formatted in valid JSON format with the following stru
 ```json
 {
     "thought": "Your final reasoning process that clearly explains how you arrived at the final answer and why the answer is both correct and complete",
-    "final_answer": "your final answer formatted as a string"
+    "final_answer": "your final answer 'formatted' as a string"
 }
 ```
 
@@ -658,6 +782,11 @@ the information gathered so far even if the answer may be incomplete or not full
 Take a moment to revisit the question, reflect on the information you have gathered, and provide the best possible answer.
 
 Unless strictly necessary, you will answer with 'N/A' if you definitely cannot provide an answer.
+'''
+
+REACT_AGENT_REFLECTION_PROMPT = '''You should reflect on your previous response and reasoning process \
+based on the provided feedback. Please correct any mistakes, improve your reasoning, 
+and provide the next intermidiate or final answer following the same response format as before.
 '''
 
 REACT_AGENT_SELF_REFLECT_PROMPT = '''Based on the provided feedback, \

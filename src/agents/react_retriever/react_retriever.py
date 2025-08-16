@@ -31,6 +31,7 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
             )
         }
         super().__init__(actions, PROMPT_EXAMPLES_TOOLS, args)
+        self._enable_interleave_reflection = False
 
     def index(self, dataset: Dataset) -> None:
         """
@@ -74,7 +75,7 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
             tuple[List[str], List[str], Dict[str, int]]: Tuple containing list of observations (retrieved documents)
 , list of sources if any, and metrics if any.
         """
-        d = max(1, d)  # Ensure d is at least 1
+        d = max(1, int(d))  # Ensure d is at least 1
         # determine how many documents to retrieve using a logistic curve since too many documents
         #  can lead to poor performance and increase token usage.
         k = int(round(30/(1 + 5 * math.exp(-0.62 * (d - 1)))))
@@ -148,7 +149,7 @@ Iteration 1:
 ```json
 {
     "thought": "I need to find the nationalities of both Scott Derrickson and Ed Wood to compare them.",
-    "actions": ["search('Scott Derrickson nationality', 1)", "search('Ed Wood nationality', 1)"]
+    "actions": ["search('Scott Derrickson's nationality', 1)", "search('Ed Wood's nationality', 1)"]
 }
 ```
 
@@ -156,7 +157,7 @@ Iteration 2:
 ```json
 {
     "thought": "I need to find the nationalities of both Scott Derrickson and Ed Wood to compare them.",
-    "actions": ["search('Scott Derrickson nationality', 1)", "search('Ed Wood nationality', 1)"],
+    "actions": ["search('Scott Derrickson's nationality', 1)", "search('Ed Wood's nationality', 1)"],
     "observations": [["Scott Derrickson, known for his work in the horror genre, including \
 films like 'The Exorcism of Emily Rose' and 'Doctor Strange', has been recognized by the president of the United States."], ["Ed Wood was an American filmmaker, actor, and writer, often regarded as one of the worst directors in film history. He is best known \
 for his cult classic 'Plan 9 from Outer Space'."]]
@@ -168,7 +169,7 @@ Iteration 3:
 {
     "thought": "I found that Ed Wood was an American filmmaker, but I need to confirm Scott Derrickson nationality to determine if they are from the same country. \
 I will search for more information on Scott Derrickson",
-    "actions": ["search('Scott Derrickson nationality', 2)"],
+    "actions": ["search('Scott Derrickson's nationality', 2)"],
 }
 ```
 
@@ -177,7 +178,7 @@ Iteration 4:
 {
     "thought": "I found that Ed Wood was an American filmmaker, but I need to confirm Scott Derrickson nationality to determine if they are from the same country. \
 I will search for more information on Scott Derrickson",
-    "actions": ["search('Scott Derrickson nationality', 2)"],
+    "actions": ["search('Scott Derrickson's nationality', 2)"],
     "observations": [["Scott Derrickson, known for his work in the horror genre, including \
 films like 'The Exorcism of Emily Rose' and 'Doctor Strange', has been recognized by the president of the United States.", "Scott Derrickson is an American film director, producer, and screenwriter"]]
 }

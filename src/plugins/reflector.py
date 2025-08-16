@@ -3,63 +3,143 @@ This module provides a Reflector class that evaluates the correctness of answers
 given context and thought process.
 """
 # pylint: disable=duplicate-code
-from typing import Dict, Tuple
+import json
+from string import Template
+from typing import Dict, List, Optional, Tuple
 
 from azure_open_ai.chat_completions import chat_completions
+from logger.logger import Logger
+from utils.structure_response import parse_structured_response
 
 
-def reflector(
-        question: str,
-        candidate_answer: str,
-        thought_process: str,
-) -> Tuple[str, Dict[str, int]]:
+class Reflector:
     """
-    Reflects on the correctness of an answer based on the provided context and thought process.
-
-    Args:
-        question (str): The question being answered.
-        candidate_answer (str): The answer to be evaluated.
-        thought_process (str): The thought process leading to the answer.
-
-    Returns:
-        str: A string indicating whether the answer is correct or not, along with the reasoning.
+    A class that tracks messages sent to chat_completions and evaluates reasoning correctness.
     """
-    feedback = ""
-    usage_metrics = {
-        "completion_tokens": 0,
-        "prompt_tokens": 0,
-        "total_tokens": 0
-    }
 
-    open_ai_request = {
-        "custom_id": "relevance_doc",
-        "model": 'gpt-4o-mini-2', # TODO: Use a reasoning model like Phi or similar for better results.
-        "messages": [
+    def __init__(self, question: str):
+        """
+        Initialize the Reflector with a question and set up initial system message.
+
+        Args:
+            question (str): The question being answered.
+        """
+        self.question = question
+        self.usage_metrics = {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0
+        }
+
+        # Initialize messages with system instructions
+        template = Template(REFLECT_AGENT_PROMPT_V3)
+        self.messages = [
             {
                 "role": "system",
-                "content": REFLECT_AGENT_PROMPT
-            },
-            {
-                "role": "user",
-                "content": f"Question: {question}\n"
-                           f"Candidate Answer: {candidate_answer}\n"
-                           f"Thought Process: {thought_process}"
+                "content": template.substitute(question=question)
             }
-        ],
-        "temperature": default_job_args['temperature'],
-        "frequency_penalty": default_job_args['frequency_penalty'],
-        "presence_penalty": default_job_args['presence_penalty'],
-        "max_completion_tokens": 500,
-    }
+        ]
 
-    result = chat_completions([open_ai_request])[0][0]
+    def reflect_on_chain(self, reasoning_chain: List[Dict[str, str]]) -> Optional[str]:
+        """
+        Reflect on a chain of reasoning steps, stopping at the first incorrect step.
 
-    feedback = result.choices[0].message.content.strip()
-    usage_metrics["completion_tokens"] += result.usage.completion_tokens
-    usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
-    usage_metrics["total_tokens"] += result.usage.total_tokens
+        Args:
+            reasoning_chain (List[Dict[str, str]]): List of reasoning steps to evaluate.
 
-    return feedback, usage_metrics
+        Returns:
+            Optional[str]: Feedback for the first incorrect step, or None if all steps are correct.
+        """
+        for step in reasoning_chain:
+            feedback, is_correct = self.reflect_on_step(step)
+            if not is_correct:
+                return feedback
+        return None
+
+    def reflect_on_step(self, reasoning_step: Dict[str, str]) -> Tuple[Optional[str], bool]:
+        """
+        Reflect on a single reasoning step and determine if it's correct.
+
+        Args:
+            reasoning_step (Dict[str, str]): A single step containing thought, actions, observations, etc.
+
+        Returns:
+            Tuple[Optional[str], bool]: (feedback_if_incorrect, is_correct)
+        """
+        filtered_reasoning_step = {k: v for k, v in reasoning_step.items() if v not in (None, "", [], {})}
+
+        # Add user message with the reasoning step
+        self.messages.append({
+            "role": "user",
+            "content": json.dumps(filtered_reasoning_step)
+        })
+
+        # Create request
+        open_ai_request = {
+            "custom_id": "reflector_step",
+            "model": 'gpt-4o-mini-2',
+            "messages": self.messages,
+            "temperature": default_job_args['temperature'],
+            "frequency_penalty": default_job_args['frequency_penalty'],
+            "presence_penalty": default_job_args['presence_penalty'],
+            "max_completion_tokens": 500,
+        }
+
+        Logger().debug(
+            f"Reflector request for question {self.question}: {open_ai_request}")
+
+        # Send request and track usage
+        result = chat_completions([open_ai_request])[0][0]
+
+        self.usage_metrics["completion_tokens"] += result.usage.completion_tokens
+        self.usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
+        self.usage_metrics["total_tokens"] += result.usage.total_tokens
+
+        content = result.choices[0].message.content.strip()
+
+        # Add assistant response to messages
+        self.messages.append({
+            "role": "assistant",
+            "content": content
+        })
+
+        Logger().debug(
+            f"Reflector response for question '{self.question}': {content}")
+
+        # Parse the structured response
+        structured_response = parse_structured_response(content)
+        correctness = str(structured_response.get('correctness', ''))
+
+        if correctness.lower() == 'incorrect':
+            Logger().debug(
+                f"Reflector determined the reasoning is incorrect for question '{self.question}'")
+            return structured_response.get('thought', None), False
+
+        return None, True
+
+    def update_observations(self, observations: List[List[str]]) -> None:
+        """
+        Update the observations in the reflector.
+
+        Args:
+            observations (List[List[str]]): List of observations to update.
+        """
+        # Add the observations as a system message
+        self.messages.append({
+            "role": "user",
+            "content": json.dumps({
+                "Observations": observations
+            })
+        })
+
+    def get_usage_metrics(self) -> Dict[str, int]:
+        """
+        Get the accumulated usage metrics.
+
+        Returns:
+            Dict[str, int]: Usage metrics with completion_tokens, prompt_tokens, total_tokens
+        """
+        return self.usage_metrics.copy()
 
 
 # pylint: disable=duplicate-code
@@ -72,97 +152,99 @@ default_job_args = {
 }
 # pylint: enable=duplicate-code
 
-REFLECT_AGENT_PROMPT = '''You are a helpful assistant that must judge whether a candidate answer is correct for \
-a given question, based solely on the provided thought process and observations.
-You must rely entirely on the context given and never use or suggest using outside or prior knowledge.
+REFLECT_AGENT_PROMPT_V3 = '''You are a reasoning process evaluator.
+Your task is to judge whether a reasoning step is logically correct, and will likely lead to a correct answer for the given question.
+Never use outside knowledge. Never assume facts unless they are explicitly stated or unambiguously implied by the context.
 
-A candidate answer is correct if it is supported by the reasoning and observations.
+You will first be given a question, and then you will be provided with the reasoning steps that can help answer the question.
 
-If the answer is not stated explicitly, you may still mark it correct if it follows naturally from the provided observations using synonyms, \
-clear equivalences, or logical inferences, including reasonable assumptions that a person, place, or role mentioned \
-in the reasoning implies the answer.
+The reasoning steps have the following structure.
 
-If the observations contain facts that clearly allow answering the question through inference or directly, an answer of "N/A" or similar is incorrect.
-If definitely no information is available to answer the question in the observations, then "N/A" is a totally acceptable answer and you must mark it as correct.
+```json
+{
+    "thought": "<Brief explanation of the reasoning step>",
+    "actions": ["<List of actions to be taken supported by the reasoning>"],
+    "final_answer": "<Final answer if enough information is available>"
+}
+```
 
-You must not critique style, length, or formatting of the candidate answer, and you must consider that the expected answer must be concise, and should
-not include any additional commentary, explanations, or notes.
+During each step, you will analyze the reasoning step following these steps in order carefully:
 
-Your feedback must be concise, one sentence starting with either "The answer is correct because ..." or "The answer is not correct because ...".
+1. Only if a reasoning step contains a claim or fact, verify it is supported either explicitely or implicitely by an observation. \
+To satisfy this, you must cite the observation that supports the claim in your response, ensuring entities from the \
+observations match with those in the claim.
 
-## Examples
+2. If an action is provided, ensure they are relevant to the question and logically follow from the reasoning step. \
 
-**Example 1 - Answer missing despite evidence**
+3. If a final answer is provided, ensure it is supported by the reasoning step and observations similarly to the first step. \
+
+
+### OUTPUT FORMAT
+
+During each reasoning step, you must respond in valid JSON format:
+
+```json
+{
+  "thought": "<Brief explanation, citing exact quotes from observations for each factual claim. State if any claim is unsupported or ambiguous.>",
+  "cite": ["<List of observations that support the claims made in the thought>"],
+  "correctness": "correct" | "incorrect"
+}
+```
+
+### EXAMPLES
+
+**Example 1**
+
 Question: "Who is the child of Caroline LeRoy's spouse?"
-Candidate Answer: "None"
-Thought Process:
 
+Iteration 1:
 ```json
-[
-    {
-        "thought": "I need to find out who Caroline LeRoy's spouse is and then identify their child.",
-        "actions": ["search('Caroline LeRoy spouse')"],
-            "observations": [
-                ["Caroline LeRoy:Caroline LeRoy Webster (September 28, 1797 in New York \
-City \\u2013 February 26, 1882) was the second wife of 19th Century statesman Daniel Webster. \
-Her father was Herman LeRoy, who was once head of the commercial house of Leroy, Bayard, McKiven & Co."]
-        ]
-    },
-    {
-        "thought": "I found that Caroline LeRoy was the second wife of Daniel Webster. I need to find out if they had any children together.",
-            "actions": ["search('Daniel Webster children')"],
-        "observations": [
-            ["Fletcher Webster:Daniel Fletcher Webster, commonly known as \
-Fletcher Webster (July 25, 1813 in Portsmouth, New Hampshire \\u2013 August \
-30, 1862) was the son of renowned politician Daniel Webster and Grace Fletcher Webster."]
-        ]
-    },
-    {
-        "thought": "I have not found any information indicating that Caroline LeRoy and Daniel Webster had children together. Therefore, I conclude that there is no child of Caroline LeRoy's spouse.",
-        "final_answer": "None"
-    }
-]
+{
+    "thought": "I need to find out who Caroline LeRoy's spouse is and then identify their child.",
+    "actions": ["search('Caroline LeRoy spouse')"]
+}
 ```
 
-Output:
-
-The answer is not correct because Daniel Webster, Caroline LeRoy's spouse, had a child named Fletcher Webster. \
-The question asks for the child of Caroline LeRoy's spouse, not whether she had children herself, and the observations clearly indicate that Daniel Webster had a child. \
-Therefore, the candidate answer "None" is incorrect.
-
-**Example 2 - Answer not supported by facts**
-Question: "What award did the author of The Red Tree receive?"
-Candidate Answer: "Astrid Lindgren Memorial Award"
-Thought Process:
+You must respond with:
 
 ```json
-[
-    {
-        "thought": "I need to find out who the the author of The Red Tree is.",
-        "actions": ["search('The Red Tree author')"],
-        "observations": [
-            ["The Red Tree (Shaun Tan):The Red Tree (2001), written and illustrated by Shaun Tan, is a picture book \
-that presents a fragmented journey through a dark world"]
-        ]
-    },
-    {
-        "thought": "I found that the author of The Red Tree is Shaun Tan, now I need to find what awards they have received.",
-        "actions": ["search('Shan Tan awards')"],
-        "observations": [
-            ["Passion Australia produced \\"The Lost Thing\\", directed by Andrew Ruhemann and Shaun Tan, which won an Academy \
-Award for Best Animated Short Film in 2011."]
-    }
-    },
-    {
-        "thought": "Shaun Tan has received multiple awards, including the prestigious Astrid Lindgren Memorial Award in 2011.",
-        "final_answer": "Astrid Lindgren Memorial Award"
-    }
-]
+{
+    "thought": "Finding out who Caroline LeRoy's spouse is a logical action to take next.",
+    "cite": [],
+    "correctness": "correct"
+}
 ```
 
-Output:
+Iteration 2:
+```json
+{
+    "observations": [
+        ["Caroline LeRoy Webster (September 28, 1797 in New York City – February 26, 1882) was the second wife of 19th Century statesman Daniel Webster. \
+Her father was Herman LeRoy, who was once head of the commercial house of Leroy, Bayard, McKiven & Co."]]
+}
+```
 
-The answer is not correct because there's no mention of Shaun Tan receiving the Astrid Lindgren Memorial Award in the provided observations, \
-only that they won an Academy Award for Best Animated Short Film. Therefore, the candidate answer "Astrid Lindgren Memorial Award" is not supported by the facts.
-"""
+```json
+{
+    "thought": "I found that Caroline LeRoy was the second wife of Daniel Webster. I need to find out if they had any children together.",
+    "actions": ["search('Daniel Webster children')"]
+}
+```
+
+You must respond with:
+
+```json
+{
+    "thought": "Daniel Webster is indeed the husband of Caroline LeRoy as stated in the observations: "Caroline LeRoy Webster \
+(September 28, 1797 in New York City – February 26, 1882) was the second wife of 19th Century statesman Daniel Webster". \
+However, assuming they had any children together is not relevant to the question, as the question asks for the child of \
+Daniel Webster, not whether she had children herself.",
+    "cite": ["Caroline LeRoy Webster (September 28, 1797 in New York City – February 26, 1882) was the second wife of 19th Century statesman Daniel Webster."],
+    "correctness": "incorrect"
+}
+```
+
+Here is the question you will judge reasoning steps to arrive at an answer for:
+
+$question
 '''

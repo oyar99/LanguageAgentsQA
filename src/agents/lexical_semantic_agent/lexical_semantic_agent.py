@@ -231,7 +231,7 @@ Iteration 1:
 ```json
 {
     "thought": "I need to find the nationalities of both Scott Derrickson and Ed Wood to compare them.",
-    "actions": ["search_lexical('Scott Derrickson')", "search_lexical('Ed Wood')")]
+    "actions": ["search_lexical('Scott Derrickson's nationality')", "search_lexical('Ed Wood's nationality')")]
 }
 ```
 
@@ -239,7 +239,7 @@ Iteration 2:
 ```json
 {
     "thought": "I need to find the nationalities of both Scott Derrickson and Ed Wood to compare them.",
-    "actions": ["search_lexical('Scott Derrickson')", "search_lexical('Ed Wood')"],
+    "actions": ["search_lexical('Scott Derrickson's nationality')", "search_lexical('Ed Wood's nationality')")],
     "observations": [["Scott Derrickson is an American film director, producer, and screenwriter. He is known for his work in the horror genre, including \
 films like 'The Exorcism of Emily Rose' and 'Doctor Strange'."], ["Ed Wood was an American filmmaker, actor, and writer, often regarded as one of the worst directors in film history. He is best known \
 for his cult classic 'Plan 9 from Outer Space'."]]
