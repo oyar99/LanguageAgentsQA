@@ -183,3 +183,6 @@ src/data/musique/data/
 # Ignore vllm files and environment
 env-llm/
 vllm/
+
+# Ignore nohub output
+nohup.out
