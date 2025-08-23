@@ -6,7 +6,7 @@ import json
 from multiprocessing import Lock, Pool, cpu_count
 import os
 from string import Template
-from typing import Any, Callable, Dict, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger, MainProcessLogger, worker_init
 from models.action import Action
@@ -522,7 +522,7 @@ including user inputs and system responses.
             f"Starting reasoning for question: {question}, process ID: {os.getpid()}")
 
         stm = []
-        sources: Set[int] = set()
+        sources: Dict[str, List[int]] = {}
 
         iteration = 0
         final_answer = None
@@ -645,7 +645,7 @@ including user inputs and system responses.
                         final_answer = "N/A"
                         break
 
-            for action in actions:
+            for action_index, action in enumerate(actions, 1):
                 # Parse action string to extract function name and arguments
                 action_func, *action_args = self._parse_action(action)
 
@@ -672,8 +672,10 @@ including user inputs and system responses.
                 usage_metrics["total_tokens"] += action_usage_metrics.get(
                     "total_tokens", 0)
 
-                # Track sources
-                sources.update(action_sources)
+                # Track sources with folder_id to maintain retrieval order
+                if action_sources:
+                    folder_id = f"iter_{iteration}_action_{action_index}"
+                    sources[folder_id] = list(action_sources)
 
             # Update the reflector with the observations
             reflector.update_observations(turn['observations'])
@@ -711,12 +713,19 @@ including user inputs and system responses.
         # Create notebook with results
         # TODO: Revisit whether this should have knowledge about the corpus
         notebook = NoteBook()
+
+        # Flatten sources dictionary maintaining insertion order (folder_ids appear in order)
+        flattened_sources = []
+        for folder_id, folder_sources in sources.items():
+            flattened_sources.extend([(folder_id, doc_id) for doc_id in folder_sources])
+
         notebook.update_sources([
             RetrievedResult(
                 doc_id=self._corpus[doc_id]['doc_id'],
-                content=self._corpus[doc_id]['content']
+                content=self._corpus[doc_id]['content'],
+                folder_id=folder_id
             )
-            for doc_id in sources
+            for folder_id, doc_id in flattened_sources
         ])
         notebook.update_notes(final_answer)
         notebook.update_usage_metrics(usage_metrics)
