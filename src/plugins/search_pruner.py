@@ -5,13 +5,14 @@ from typing import Any, Dict, List, Tuple
 
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
+from utils.structure_response import parse_structured_response
 
 
 def search_pruner(
         query: str,
         documents: List[Dict[str, Any]],
         thought: str,
-        threshold=50.0
+        threshold=30.0
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """
     Prune search results based on a relevance threshold if the result is relevant to the query and thought.
@@ -58,7 +59,7 @@ def _calculate_relevance(query: str, content: str, thought: str) -> Tuple[float,
 
     open_ai_request = {
         "custom_id": "relevance_doc",
-        "model": 'gpt-4o-mini-2',
+        "model": 'gpt',
         "messages": [
             {
                 "role": "system",
@@ -66,23 +67,42 @@ def _calculate_relevance(query: str, content: str, thought: str) -> Tuple[float,
             },
             {
                 "role": "user",
-                "content": query
+                "content": f"Document: \"{content}\"\nThought: \"{thought}\"\n\nQuery: \"{query}\"\n\n"
             }
         ],
         "temperature": default_job_args['temperature'],
         "frequency_penalty": default_job_args['frequency_penalty'],
         "presence_penalty": default_job_args['presence_penalty'],
-        "max_completion_tokens": 10,
+        "max_completion_tokens": 500,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "strict": True,
+                "name": "relevance_response",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "relevance_score": {"type": "integer", "minimum": 0, "maximum": 100},
+                        "explanation": {"type": "string"},
+                    },
+                    "required": ["relevance_score", "explanation"],
+                    "additionalProperties": False
+                }
+            }
+        }
     }
 
-    result = chat_completions([open_ai_request])[0][0]
-
-    score = result.choices[0].message.content.strip()
-
     try:
-        score = int(score)
-    except ValueError:
-        Logger().error(f"Invalid score returned: {score}")
+        result = chat_completions([open_ai_request])[0][0]
+
+        Logger().debug(f"Relevance response: {result.choices[0].message.content.strip()}")
+
+        structured_response = parse_structured_response(result.choices[0].message.content.strip())
+
+        score = int(structured_response.get('relevance_score', 100))
+    # pylint: disable=broad-except
+    except Exception as e:
+        Logger().error(f"Encountered error while processing document score: {e}")
         # Assuming invalid scores should be treated as relevant
         return (100.0, {
             "completion_tokens": result.usage.completion_tokens,
@@ -106,14 +126,22 @@ default_job_args = {
 }
 # pylint: enable=duplicate-code
 
-RELEVANCE_AGENT_PROMPT = '''You are a helpful assistant that is helping an AI agent evaluate the relevance of search \
-results to a given query, and thought process. Your task is to provide a relevance score \
-between 0 and 100, where 0 means not relevant at all and 100 means highly relevant and can help the agent proceed with the task.
+RELEVANCE_AGENT_PROMPT = '''You are a helpful assistant that must evaluate the relevance of a given passage \
+to a given query, and thought process. Your task is to provide a relevance score \
+between 0 and 100, where 0 means not relevant at all and 100 means highly relevant.
+If you are unsure about whether the document could be relevant, respond with a score of 50.
 
-The relevance score should be based on the content of the document and how well it matches the query and thought process.
 
-Your response should be a single integer value representing the relevance score. Do not include any additional text or explanation.
+### Example
 
-Document: {content}
-Thought: {thought}
+Document: "The Girl in the Taxi (1937 film): The Girl in the Taxi is a 1937 British musical comedy fil directed by \
+Andrew Berthomieu and starring Frances Day, Henri Garat and Lawrence Grossmith.
+Thought: "I need to find the director of the film The Girl in White to determine which director was born first."
+Query: "The Girl in White director"
+
+Your response should be:
+
+relevance_score: 0
+explanation: "The document discusses a different film, The Girl in the Taxi, and does not provide any information about \
+the film The Girl in White or its director.
 '''

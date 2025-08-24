@@ -1,5 +1,5 @@
 """Azure OpenAI Chat Completions Module"""
-from openai import BadRequestError
+from openai import NOT_GIVEN, BadRequestError
 from openai.types.chat.chat_completion import ChatCompletion, Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 from openai.types.completion_usage import CompletionUsage
@@ -73,6 +73,7 @@ def chat_completions(
                 stop=job.get("stop", None),
                 tools=job.get("tools", None),
                 tool_choice=job.get("tool_choice", None),
+                response_format=job.get("response_format", NOT_GIVEN),
             )
 
             Logger().debug(
