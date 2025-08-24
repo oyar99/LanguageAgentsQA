@@ -45,7 +45,8 @@ class OpenAIClient(metaclass=Singleton):
                 self._client = AzureOpenAI(
                     azure_endpoint=azure_endpoint,
                     api_key=api_key,
-                    api_version=api_version
+                    api_version=api_version,
+                    max_retries=6
                 )
 
     def get_client(self):

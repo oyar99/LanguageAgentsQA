@@ -165,7 +165,7 @@ The metrics will be logged.
 Some processes may take long to complete if processing full datasets. We recommend using [nohup](https://www.man7.org/linux/man-pages/man1/nohup.1.html) for Linux.
 
 ```sh
-nohup python index.py -e predict -m gpt-4o-mini -d musique -a react_custom
+nohup python index.py -e predict -m gpt-4o-mini -d musique -a react_custom &
 ```
 
 To check the progress, either review the log file or run

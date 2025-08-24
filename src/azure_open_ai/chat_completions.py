@@ -103,7 +103,16 @@ def chat_completions(
                 completion = _create_empty_chat_completion(job)
             else:
                 # Re-raise other BadRequestErrors
-                raise e
+                Logger().error(
+                    "received BadRequestError that is not content filtering"
+                )
+                completion = _create_empty_chat_completion(job)
+        # pylint: disable=broad-exception-caught
+        except Exception as e:
+            Logger().error(
+                f"Unexpected error for job {job['custom_id']}: {e}"
+            )
+            completion = _create_empty_chat_completion(job)
 
         results.append((completion, job['custom_id']))
 

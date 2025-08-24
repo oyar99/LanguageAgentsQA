@@ -218,7 +218,7 @@ class MultiprocessingSearchAgent(Agent, ABC):
         l = Lock()
 
         results = []
-        with Pool(min(42, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
+        with Pool(min(16, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
             results = pool.map(self.reason, questions)
 
         return results
