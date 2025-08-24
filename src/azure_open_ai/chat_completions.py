@@ -102,7 +102,6 @@ def chat_completions(
 
                 completion = _create_empty_chat_completion(job)
             else:
-                # Re-raise other BadRequestErrors
                 Logger().error(
                     "received BadRequestError that is not content filtering"
                 )
