@@ -1,0 +1,19 @@
+\begin{table}[ht]
+    \centering
+    \adjustbox{max width=\textwidth}{
+        \begin{tabular}{lccccccccccccccccccccc}
+            \toprule
+            & \multicolumn{3}{c}{\scriptsize \textbf{LoCoMo}} & \multicolumn{3}{c}{\scriptsize \textbf{HotpotQA}} & \multicolumn{3}{c}{\scriptsize \textbf{2Wiki}} & \multicolumn{3}{c}{\scriptsize \textbf{MuSiQue}} & \multicolumn{3}{c}{\scriptsize \textbf{Average}} \\
+            \cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10} \cmidrule(lr){11-13} \cmidrule(lr){14-16}
+             & \scriptsize R & \scriptsize P & \scriptsize $F_1$ & \scriptsize R & \scriptsize P & \scriptsize $F_1$ & \scriptsize R & \scriptsize P & \scriptsize $F_1$ & \scriptsize R & \scriptsize P & \scriptsize $F_1$ & \scriptsize R & \scriptsize P & \scriptsize $F_1$ \\
+             \midrule
+            \scriptsize QA Agent & 62.1 & 15.4 & 23.7 & 85.8 & 23.9 & 36.6 & 90.3 & 21.6 & 34.4 & 69.0 & 17.7 & 27.5 & 76.8 & 19.7 & 30.6 \\
+            \scriptsize Re-Ranking Agent & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
+            \scriptsize Hybrid QA Agent & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
+            \scriptsize Multi-agent Reflection & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
+            \bottomrule
+        \end{tabular}
+    }
+    \caption{\small Agents Retrieval performance.}
+    \label{tab:retrieval_results_agents}
+\end{table}

@@ -13,6 +13,10 @@ We first evaluated the retrieval performance of our baseline systems introduced 
 
 \input{chapter4/retrieval_results}
 
+\noindent Since the designed agents do not generally execute a single search to obtain relevant passages, we only compute average \textbf{recall (R)}, \textbf{precision (P)}, and \textbf{$F_1$} for all queries considering all documents the agent used to derive the final answer. This information is shown in Table \ref{tab:retrieval_results_agents}.
+
+\input{chapter4/retrieval_results_agents}
+
 \section{Question Answering Results}
 
 \noindent Figure \ref{fig:scores_gpt4o} shows the results obtained using GPT-4o-mini across the four datasets using ColBERTV2, msmarco-bert-base-dot-v5, and BM25 retrievers. While performance generally improves with increasing $k$, the gains diminish as more irrelevant details begin to interfere with the model's ability to identify relevant information within its context.
@@ -32,3 +36,7 @@ We first evaluated the retrieval performance of our baseline systems introduced 
 \noindent Detailed results for all baseline configurations are provided in Table \ref{tab:qa_results}.
 
 \input{chapter4/qa_results}
+
+\noindent For the agents architectures, QA results are presented in Table \ref{tab:qa_results_agents}.
+
+\input{chapter4/qa_results_agents}

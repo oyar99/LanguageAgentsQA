@@ -1,0 +1,19 @@
+\begin{table}[ht]
+    \centering
+        \adjustbox{max width=1.1\textwidth}{
+        \begin{tabular}{lcccccccccccccccccccc}
+            \toprule
+            & \multicolumn{4}{c}{\textbf{LoCoMo}} & \multicolumn{4}{c}{\textbf{HotpotQA}} & \multicolumn{4}{c}{\textbf{2Wiki}} & \multicolumn{4}{c}{\textbf{MuSiQue}} & \multicolumn{4}{c}{\textbf{Average}} \\
+            \cmidrule(lr){2-5} \cmidrule(lr){6-9} \cmidrule(lr){10-13} \cmidrule(lr){14-17} \cmidrule(lr){18-21}
+             & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ \\
+            \midrule
+            QA Agent & 23.3 & 47.5 & 25.2 & 43.0 & 56.0 & 70.2 & 38.5 & 71.0 & 63.4 & 71.6 & 48.8 & 70.0 & 34.5 & 44.9 & 29.4 & 42.0 & 44.3 & 58.6 & 35.5 & 56.5 \\
+            Re-Ranking Agent & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
+            Hybrid QA Agent & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
+            Multi-agent Reflection & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
+            \bottomrule
+        \end{tabular}
+        }
+    \caption{\small Agents Question Answering performance.}
+    \label{tab:qa_results_agent}
+\end{table}
