@@ -68,6 +68,9 @@ If not provided, an evaluation file is generated')
     parser.add_argument('-r', '--retrieval', action='store_true',
                         help='run retrieval evaluation (optional)')
 
+    parser.add_argument('-rr', '--retrieval-unranked', action='store_true',
+                        help='run retrieval evaluation for unranked list of documents (optional)')
+
     parser.add_argument('-mt', '--metric', action='store_true',
                         help='run metric evaluation (optional)')
 

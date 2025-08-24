@@ -11,7 +11,7 @@ from evaluator.f1_evaluator import eval_f1_score
 from evaluator.bert_evaluator import eval_bert_score
 from evaluator.judge_evaluator import eval_judge_score, eval_judge_score_with_file
 from evaluator.metrics_evaluator import eval_metrics
-from evaluator.retrieval_evaluator import eval_retrieval_recall
+from evaluator.retrieval_evaluator import eval_retrieval_recall, eval_retrieval_unranked
 from evaluator.rogue_evaluator import eval_rogue_score
 from logger.logger import Logger
 from models.dataset import Dataset
@@ -46,7 +46,13 @@ def evaluator(args, dataset: Dataset) -> None:
     with open(args.evaluation, "r", encoding="utf-8") as evaluation_file:
         evaluation = [json.loads(line) for line in evaluation_file]
 
-        if args.retrieval:
+        if args.retrieval_unranked:
+            doc_pairs = [pair for pair in (extract_doc_pair(dataset,
+                                                            eval_item,
+                                                            dedupe=True)
+                                           for eval_item in evaluation) if pair is not None]
+            evaluate_retrieval_unranked(doc_pairs)
+        elif args.retrieval:
             doc_pairs = [pair for pair in (extract_doc_pair(dataset,
                                                             eval_item) for eval_item in evaluation) if pair is not None]
             evaluate_retrieval(doc_pairs)
@@ -86,8 +92,28 @@ def evaluator(args, dataset: Dataset) -> None:
                                                           eval_item) for eval_item in evaluation) if pair is not None]
             evaluate(qa_pairs, args)
 
+def evaluate_retrieval_unranked(doc_pairs: list[tuple[list[Document], list[Document]]]) -> None:
+    """
+    Evaluates retrieval performance based on the provided unranked document pairs.
 
-def evaluate_retrieval(doc_pairs: list[tuple[list[Document] | None, list[Document]]]) -> None:
+
+    Args:
+        doc_pairs (list[tuple[list[Document], list[Document]]]): the ground truth documents and the model's documents
+    """
+    if len(doc_pairs) == 0:
+        Logger().error("No doc pairs found. Please check the evaluation file.")
+        raise ValueError("No doc pairs found")
+
+    Logger().info("Evaluating retrieval score for unranked documents")
+
+    recall, precision, f1 = eval_retrieval_unranked(doc_pairs)
+
+    Logger().info(f"Recall: {recall}")
+    Logger().info(f"Precision: {precision}")
+    Logger().info(f"F1 Score: {f1}")
+
+
+def evaluate_retrieval(doc_pairs: list[tuple[list[Document], list[Document]]]) -> None:
     """
     Evaluates retrieval performance based on the provided document pairs.
     Evaluates the recall score across various Ks.
@@ -179,14 +205,16 @@ def extract_metrics(eval_item: dict[str, Any]) -> Optional[dict[str, int]]:
 
 def extract_doc_pair(
     dataset: Dataset,
-    eval_item: dict[str, Any]
-) -> Optional[tuple[list[Document] | None, list[Document]]]:
+    eval_item: dict[str, Any],
+    dedupe: bool = False
+) -> Optional[tuple[list[Document], list[Document]]]:
     """
     Extracts the document pairs for evaluation from the evaluation item.
 
     Args:
         dataset (Dataset): the dataset to be processed
         eval_item (dict[str, any]): the evaluation item to be processed
+        dedupe (bool): whether to deduplicate the actual documents based on doc_id
 
     Returns:
         Optional[tuple[list[Document], list[Document]]]: the ground truth documents and the model's documents
@@ -203,10 +231,25 @@ def extract_doc_pair(
     Logger().debug(f"Question found: {question['question']}")
 
     expected_docs = dataset.get_supporting_docs(eval_item['custom_id'])
+
+    if expected_docs is None:
+        Logger().warn(
+            f"Supporting docs for sample id {eval_item['custom_id']} not found in the dataset. Skipping evaluation ...")
+        return None
+
     actual_docs = [Document(
         doc_id=result['doc_id'],
         content=result['content']
     ) for result in eval_item['result']]
+
+    if dedupe:
+        seen_doc_ids = set()
+        deduped_actual_docs = []
+        for doc in actual_docs:
+            if doc['doc_id'] not in seen_doc_ids:
+                deduped_actual_docs.append(doc)
+                seen_doc_ids.add(doc['doc_id'])
+        actual_docs = deduped_actual_docs
 
     doc_pairs = (
         expected_docs,
