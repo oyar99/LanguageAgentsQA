@@ -200,6 +200,20 @@ class MultiprocessingSearchAgent(Agent, ABC):
     two resources to the worker processes: a lock and a searcher accesible via the utils.agent_worker module.
     """
 
+    def _safe_reason(self, question: str) -> NoteBook:
+        try:
+            return self.reason(question)
+        # pylint: disable=broad-exception-caught
+        except Exception as e:
+            Logger().error(
+                f"Error in reasoning for question '{question}': {e}")
+            # Return an empty notebook in case of error
+            notebook = NoteBook()
+
+            notebook.update_notes("N/A")
+
+            return notebook
+
     def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
         """
         Processes the questions in parallel using multiprocessing.
@@ -219,7 +233,7 @@ class MultiprocessingSearchAgent(Agent, ABC):
 
         results = []
         with Pool(min(16, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
-            results = pool.map(self.reason, questions)
+            results = pool.map(self._safe_reason, questions)
 
         return results
 
@@ -717,7 +731,8 @@ including user inputs and system responses.
         # Flatten sources dictionary maintaining insertion order (folder_ids appear in order)
         flattened_sources = []
         for folder_id, folder_sources in sources.items():
-            flattened_sources.extend([(folder_id, doc_id) for doc_id in folder_sources])
+            flattened_sources.extend([(folder_id, doc_id)
+                                     for doc_id in folder_sources])
 
         notebook.update_sources([
             RetrievedResult(
