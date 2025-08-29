@@ -59,7 +59,7 @@ def _calculate_relevance(query: str, content: str, thought: str) -> Tuple[float,
 
     open_ai_request = {
         "custom_id": "relevance_doc",
-        "model": 'gpt',
+        "model": 'gpt-4o-mini-2',
         "messages": [
             {
                 "role": "system",

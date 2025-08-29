@@ -2,6 +2,7 @@
 
 from typing import Type
 from agents.bm25.bm25 import BM25
+from agents.cognitive_agent.cognitive_agent import CognitiveAgent
 from agents.colbertv2.colbertv2 import ColbertV2
 from agents.colbertv2_reranker.colbertv2_reranker import ColbertV2Reranker
 from agents.default.default import Default
@@ -55,6 +56,7 @@ class Orchestrator:
             'react_custom': ReactAgentCustom,
             'lexical_semantic': LexicalSemanticAgent,
             'react_retriever': ReactRetriever,
+            'cognitive': CognitiveAgent
         }
 
         if args.agent not in agents:

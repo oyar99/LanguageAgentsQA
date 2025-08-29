@@ -6,6 +6,7 @@ import json
 from multiprocessing import Lock, Pool, cpu_count
 import os
 from string import Template
+import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger, MainProcessLogger, worker_init
@@ -200,6 +201,10 @@ class MultiprocessingSearchAgent(Agent, ABC):
     two resources to the worker processes: a lock and a searcher accesible via the utils.agent_worker module.
     """
 
+    def __init__(self, args, cores=16):
+        super().__init__(args)
+        self._cores = cores
+
     def _safe_reason(self, question: str) -> NoteBook:
         try:
             return self.reason(question)
@@ -207,6 +212,7 @@ class MultiprocessingSearchAgent(Agent, ABC):
         except Exception as e:
             Logger().error(
                 f"Error in reasoning for question '{question}': {e}")
+            Logger().debug(traceback.format_exc())
             # Return an empty notebook in case of error
             notebook = NoteBook()
 
@@ -232,8 +238,120 @@ class MultiprocessingSearchAgent(Agent, ABC):
         l = Lock()
 
         results = []
-        with Pool(min(16, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
+        with Pool(min(self._cores, cpu_count()), init_agent_worker, [MainProcessLogger().get_queue(), l]) as pool:
             results = pool.map(self._safe_reason, questions)
+
+        return results
+
+    def batch_reason(self, _: list[QuestionAnswer]) -> list[NoteBook]:  # type: ignore
+        """
+        Uses its question index to answer the questions.
+
+        Raises:
+            NotImplementedError: Batch reasoning is not implemented for MultiprocessingSearchAgent.
+        """
+        raise NotImplementedError(
+            "Batch reasoning is not implemented for MultiprocessingSearchAgent.")
+
+
+class MultiprocessingStatefulSearchAgent(Agent, ABC):
+    """
+    An abstract class representing a stateful agent that supports multiprocessing reasoning.
+    It extends the Agent class and provides an advanced implementation for multiprocessing reasoning that exposes
+    two resources to the worker processes: a lock and a searcher accesible via the utils.agent_worker module.
+    """
+
+    def __init__(self, args, cores=2):
+        super().__init__(args)
+        self._cores = cores
+
+    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
+        """
+        Processes the questions in parallel using multiprocessing
+        by persisting the state across multiple reasoning sessions.
+        This function is used to speed up the reasoning process by using multiple processes.
+
+        Args:
+            question (list[str]): the given questions
+
+        Returns:
+            notebook (list[Notebook]): the detailed findings to help answer all questions (context)
+        """
+        l = Lock()
+
+        # Divide questions into groups based on number of cores
+        question_groups = self._divide_questions_into_groups(questions)
+
+        # Create worker processes for each group
+        results = []
+        with Pool(
+            min(self._cores, len(question_groups)),
+            init_agent_worker,
+            [MainProcessLogger().get_queue(), l]
+        ) as pool:
+            # Send each group to a worker process
+            group_results = pool.map(
+                self._process_question_batch, question_groups)
+
+            # Flatten the results from all groups
+            for group_result in group_results:
+                results.extend(group_result)
+
+        return results
+
+    def _divide_questions_into_groups(self, questions: list[str]) -> list[list[str]]:
+        """
+        Divide questions into groups based on the number of cores.
+
+        Args:
+            questions: List of questions to divide
+
+        Returns:
+            List of question groups
+        """
+        if not questions:
+            return []
+
+        group_size = max(1, len(questions) // self._cores)
+        groups = []
+
+        for i in range(0, len(questions), group_size):
+            group = questions[i:i + group_size]
+            groups.append(group)
+
+        return groups
+
+    def _process_question_batch(self, question_batch: list[str]) -> list[NoteBook]:
+        """
+        Process a batch of questions synchronously since the agent is stateful.
+        This method is called by worker processes.
+
+        Args:
+            question_batch: List of questions to process
+
+        Returns:
+            List of notebooks with results
+        """
+        results = []
+
+        for question in question_batch:
+            try:
+                notebook = self.reason(question)
+                results.append(notebook)
+            # pylint: disable=broad-exception-caught
+            except Exception as e:
+                Logger().error(f"Error processing question '{question}': {e}")
+                Logger().error(f"Traceback: {traceback.format_exc()}")
+
+                # Create error notebook
+                error_notebook = NoteBook()
+                error_notebook.update_notes("N/A")
+                error_notebook.update_usage_metrics({
+                    "completion_tokens": 0,
+                    "prompt_tokens": 0,
+                    "total_tokens": 0
+                })
+                results.append(error_notebook)
 
         return results
 
@@ -259,7 +377,40 @@ class SelfContainedAgent(Agent, ABC):
         self.standalone = True
 
 
-class IntelligentAgent(MultiprocessingSearchAgent, SelfContainedAgent, ABC):
+class CustomizableAgent(Agent, ABC):
+    """
+    An abstract class representing a customizable agent that can be configured with different parameters.
+    It extends the Agent class and provides additional functionality for customization.
+
+    Args:
+        ABC: an abstract base class
+    """
+
+    def pre_reasoning(self, question: str) -> None:
+        """
+        Pre-process the question before reasoning.
+        """
+
+    def post_reasoning(self,
+                       question: str,
+                       final_answer: str,
+                       messages: List[Dict[str, str]],
+                       sources: List[str]
+                       ) -> None:
+        """
+        Post-process the final answer after reasoning.
+
+        Args:
+            final_answer (str): The final answer generated by the agent.
+            sources (List[RetrievedResult]): The list of sources used to generate the answer.
+            messages (List[Dict[str, str]]): The list of messages exchanged during the reasoning process.
+
+        Returns:
+            str: The post-processed final answer.
+        """
+
+
+class BaseIntelligentAgent(CustomizableAgent, SelfContainedAgent, ABC):
     """
     An abstract class representing an intelligent agent that can reason over a dataset.
     It extends the Agent class and provides additional functionality for reasoning.
@@ -547,6 +698,8 @@ including user inputs and system responses.
             "total_tokens": 0
         }
 
+        self.pre_reasoning(question)
+
         messages = [
             {"role": "system", "content": self._prompt},
             {"role": "user", "content": question}
@@ -734,6 +887,11 @@ including user inputs and system responses.
             flattened_sources.extend([(folder_id, doc_id)
                                      for doc_id in folder_sources])
 
+        sources_ids = list(dict.fromkeys(
+            [doc_id for _, doc_id in flattened_sources]))
+
+        self.post_reasoning(question, final_answer, messages, sources_ids)
+
         notebook.update_sources([
             RetrievedResult(
                 doc_id=self._corpus[doc_id]['doc_id'],
@@ -746,6 +904,26 @@ including user inputs and system responses.
         notebook.update_usage_metrics(usage_metrics)
 
         return notebook
+
+
+class IntelligentAgent(BaseIntelligentAgent, MultiprocessingSearchAgent, ABC):
+    """
+    A class representing an intelligent agent that combines multiprocessing capabilities with intelligent reasoning.
+    """
+
+    def __init__(self, actions: Dict[str, Action], examples: str, args, cores=16):
+        MultiprocessingSearchAgent.__init__(self, args, cores)
+        BaseIntelligentAgent.__init__(self, actions, examples, args)
+
+
+class StatefulIntelligentAgent(BaseIntelligentAgent, MultiprocessingStatefulSearchAgent, ABC):
+    """
+    A class representing a stateful intelligent agent that maintains state across multiple reasoning sessions.
+    """
+
+    def __init__(self, actions: Dict[str, Action], examples: str, args, cores=4):
+        MultiprocessingStatefulSearchAgent.__init__(self, args, cores)
+        BaseIntelligentAgent.__init__(self, actions, examples, args)
 
 
 # Default job arguments
