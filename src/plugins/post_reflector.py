@@ -16,7 +16,7 @@ def post_reflector(
         messages: List[Dict[str, str]],
         expected_evidences: List[str],
         missing_evidence: bool = True
-) -> Optional[Tuple[str, str]]:
+) -> Optional[Tuple[str, str, Dict[str, int]]]:
     """
     Analyze why an answer is incorrect by comparing it to the expected answer and evidence.
 
@@ -26,9 +26,11 @@ def post_reflector(
         final_answer (str): The answer provided by the agent.
         messages (List[Dict[str, str]]): List of exchanges between QA agent and user.
         expected_evidences (List[str]): List of expected supporting evidence.
+        missing_evidence (bool): Whether missing evidence should be included in analysis.
 
     Returns:
-        str: A short explanation of why the answer is incorrect or doesn't match expected_answer.
+        Optional[Tuple[str, str, Dict[str, int]]]: A tuple containing explanation, category, and usage metrics.
+        Returns None if analysis fails.
     """
     # Format the conversation history excluding the system prompt
     conversation_history = "\n".join([
@@ -105,10 +107,19 @@ def post_reflector(
         Logger().debug(
             f"Post-reflection response: {result.choices[0].message.content.strip()}")
 
+        # Extract usage metrics
+        usage_metrics = {
+            "completion_tokens": result.usage.completion_tokens,
+            "prompt_tokens": result.usage.prompt_tokens,
+            "total_tokens": result.usage.total_tokens
+        }
+
         structured_response = parse_structured_response(
             result.choices[0].message.content.strip())
 
-        return (structured_response.get('explanation', None), structured_response.get('category', 'Other'))
+        return (structured_response.get('explanation', None), 
+                structured_response.get('category', 'Other'),
+                usage_metrics)
 
     # pylint: disable=broad-except
     except Exception as e:
@@ -128,28 +139,21 @@ default_job_args = {
 # pylint: enable=duplicate-code
 
 POST_REFLECTOR_PROMPT_BASE = '''You are an expert analysis assistant that evaluates why a QA \
-agent's answer is incorrect or doesn't match the expected answer. Your task is to identify the \
-specific reasoning error or misinterpretation that led to the incorrect response.
+agent's answer is incorrect. Your task is to identify the specific error.
 
-Analyze the agent's reasoning process through the conversation history and compare it against the expected answer \
-and supporting evidence. Focus on identifying:
+Focus on connecting the evidence by identifying:
 
-1. **Misinterpretation**: Did the agent misunderstand the question or misinterpret part of the evidence?
-    For example, confusing two similar-sounding entities or mixing up details from different sources.
-2. **Hallucination**: Did the agent use not explicitly available information to produce its answer?
-    For example, inventing facts or details that were not present in the provided evidence.
-3. **Reasoning Error**: Did the agent make logical mistakes in connecting evidence to conclusions?
-    For example, drawing incorrect inferences or mathematical errors.
+1. **Misinterpretation**: Quote the specific text the agent used incorrectly and explain how it should have been interpreted.
+2. **Hallucination**: Quote any facts the agent invented that weren't in the retrieved text.
+3. **Reasoning Error**: Show the logical error by comparing what the agent concluded vs. what the evidence actually supports.
 '''
 
-POST_REFLECTOR_MISSING_EVIDENCE_SECTION = '''4. **Missing Evidence**: \
-Did the agent fail to retrieve relevant evidence needed to answer the question?
-Only consider this error when all previous categories do not apply.
+POST_REFLECTOR_MISSING_EVIDENCE_SECTION = '''4. **Missing Evidence**: Quote the key text that was missing from \
+retrieval but available in the supporting evidence.
 '''
 
 POST_REFLECTOR_PROMPT_FOOTER = '''
-
-Provide a clear concrete explanation of the error that led to the wrong answer.
+Your explanation should be written as a self-reflective monologue, quoting the specific text pieces, connecting them to the error, and providing actionable suggestions for improvement.
 
 ### Example
 
@@ -169,15 +173,15 @@ user: Who was married to the star of No Escape?
 system: {\
 "thought": "I need to find the correct film titled 'No Escape' to identify its star and then look for their marital status.", \
 "actions": ["search('No Escape film cast')"],\
-"observations": [["No Escape (1936 film):No Escape is a 1936 British thriller film directed by Norman Lee and starring Valerie Hobson, \
-Leslie Perrins and Robert Cochran. The screenplay concerns a man who attempts to hide his friend for a month.", "Escape from L.A.:Escape from \
+"observations": [["No Escape (1936 film): No Escape is a 1936 British thriller film directed by Norman Lee and starring Valerie Hobson, \
+Leslie Perrins and Robert Cochran. The screenplay concerns a man who attempts to hide his friend for a month.", "Escape from L.A.: Escape from \
 L.A. (also known as John Carpenter's Escape from L.A. or Escape from Los Angeles) is a 1996 American postapocalyptic action film co-written, \
 co-scored, and directed by John Carpenter, co-written and produced by Debra Hill and Kurt Russell, with Russell also starring as Snake Plissken."]]\
 }
 system: {\
 "thought": "Kurt Russell is the star of the 1996 film 'No Escape'. I need to find out who he is married to.", \
 "actions": ["search('Kurt Russell spouse')"],
-"observations": [["The Fox and the Hound:Mickey Rooney as Tod Kurt Russell as Copper Pearl Bailey as Big Mama Jack Albertson as Amos Slade Sandy \
+"observations": [["The Fox and the Hound: Mickey Rooney as Tod Kurt Russell as Copper Pearl Bailey as Big Mama Jack Albertson as Amos Slade Sandy \
 Duncan as Vixey Jeanette Nolan as Widow Tweed Pat Buttram as Chief John Fiedler as The Porcupine John McIntire as The Badger Dick Bakalyan as \
 Dinky Paul Winchell as Boomer Keith Coogan as Young Tod Corey Feldman as Young Copper"]]\
 }
@@ -189,8 +193,14 @@ system: {\
 Your response should be:
 
 {\
-"explanation": "The agent confused the film 'Escape from L.A' with the film 'No Escape (1936 film)'. \
-As a result, the agent was not able to retrieve other relevant evidences to answer the question.",\
+"explanation": "Looking at my reasoning process, I can see where I went wrong. When I searched for 'No Escape film cast', I retrieved information about \
+both 'No Escape (1936 film): No Escape is a 1936 British thriller film directed by Norman Lee and starring Valerie Hobson, Leslie Perrins and Robert Cochran' \
+and 'Escape from L.A.: Escape from L.A. (also known as John Carpenter's Escape from L.A. or Escape from Los Angeles) is a 1996 American postapocalyptic \
+action film co-written, co-scored, and directed by John Carpenter, co-written and produced by Debra Hill and Kurt Russell, with Russell also starring as \
+Snake Plissken.' The problem was that I focused on Kurt Russell from 'Escape from L.A.' instead of recognizing that the question was asking about 'No \
+Escape (1936 film)' which clearly starred Valerie Hobson. I should have paid closer attention to the exact film title and realized that 'Escape from L.A.' \
+is a completely different movie from 'No Escape.' This misidentification led me down the wrong path entirely, causing me to search for Kurt Russell's marriage \
+instead of Valerie Hobson's. In the future, I need to be more careful about matching entity names exactly and not confusing similar titles.",\
 "category": "Misinterpretation"\
 }
 '''

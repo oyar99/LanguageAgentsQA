@@ -3,7 +3,7 @@
 # pylint: disable=duplicate-code
 import math
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
 from evaluator.rogue_evaluator import rouge_score
@@ -39,6 +39,7 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
 
         # 4 agents that learn independently in parallel
         super().__init__(actions, prompt_examples, args, cores=2)
+        self._base_prompt = self._prompt
         self._enable_reflection = False
 
         self._episodic_memory: List[Dict[str, Any]] = []
@@ -145,9 +146,35 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
         # objects that can't be pickled, and hence need to be instantiated in each process.
         self._init_searcher()
 
-        return super().reason(question)
+        # Pre-process the question before reasoning by extracting representative error samples
+        # from episodic memory and updating the prompt with additional examples
+        self._pre_reasoning(question)
 
-    def pre_reasoning(self, question: str) -> None:
+        # Get the notebook from the parent reasoning process
+        notebook = super().reason(question)
+
+        # Extract information from the notebook for post-processing
+        final_answer = notebook.get_notes()
+        messages = notebook.get_messages()
+        sources = [source['doc_id'] for source in notebook.get_sources()]
+
+        # Perform post-processing analysis and update token usage
+        post_reasoning_usage = self._post_reasoning(
+            question, final_answer, messages, sources)
+
+        # Update notebook with additional usage metrics from post-reasoning
+        if post_reasoning_usage:
+            current_usage = notebook.get_usage_metrics()
+            updated_usage = {
+                "completion_tokens": current_usage.get("completion_tokens", 0) + post_reasoning_usage.get("completion_tokens", 0),
+                "prompt_tokens": current_usage.get("prompt_tokens", 0) + post_reasoning_usage.get("prompt_tokens", 0),
+                "total_tokens": current_usage.get("total_tokens", 0) + post_reasoning_usage.get("total_tokens", 0)
+            }
+            notebook.update_usage_metrics(updated_usage)
+
+        return notebook
+
+    def _pre_reasoning(self, question: str) -> List[Dict[str, str]]:
         """
         Pre-process the question before reasoning by extracting representative error samples
         from episodic memory and updating the prompt with additional examples.
@@ -185,7 +212,7 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
 
             # Add episodic memory section to the existing prompt
             episodic_section = f"\n\n## MY LEARNING EXPERIENCE\n\n{episodic_examples}"
-            self._prompt += episodic_section
+            self._prompt = self._base_prompt + episodic_section
 
             Logger().debug(
                 f"Updated prompt with {len(representative_samples)} episodic memory examples")
@@ -193,7 +220,8 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
     def _extract_representative_samples(self,
                                         error_categories: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         """
-        Extract at most 5 representative samples using distribution heuristics.
+        Extract at most 30 representative samples using distribution heuristics.
+        Prioritizes the most recent entries for each category to ensure fresh learning.
 
         Args:
             error_categories: Dictionary mapping error categories to lists of error instances
@@ -201,7 +229,7 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
         Returns:
             List of representative error samples
         """
-        max_samples = 5
+        max_samples = 30
         total_errors = sum(len(errors) for errors in error_categories.values())
 
         if total_errors == 0:
@@ -218,14 +246,14 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
         # Heuristic 1: If one error type dominates (>50%), allocate more samples to it
         dominant_category = sorted_categories[0]
         if dominant_category[1] / total_errors > 0.5:
-            # Allocate 3 samples to dominant category, 2 to others
+            # Allocate 60% samples to dominant category, remaining to others
             samples_for_dominant = min(
-                3, len(error_categories[dominant_category[0]]))
+                int(max_samples * 0.6), len(error_categories[dominant_category[0]]))
             remaining_samples = max_samples - samples_for_dominant
 
-            # Add samples from dominant category
+            # Add most recent samples from dominant category
             representative_samples.extend(
-                error_categories[dominant_category[0]][:samples_for_dominant]
+                error_categories[dominant_category[0]][-samples_for_dominant:]
             )
 
             # Distribute remaining samples among other categories
@@ -238,8 +266,9 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
                         break
                     samples_to_take = min(samples_per_other, len(
                         error_categories[cat_name]), remaining_samples)
+                    # Take most recent samples from this category
                     representative_samples.extend(
-                        error_categories[cat_name][:samples_to_take])
+                        error_categories[cat_name][-samples_to_take:])
                     remaining_samples -= samples_to_take
         else:
             # Heuristic 2: Balanced distribution - distribute samples evenly across categories
@@ -251,7 +280,8 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
                     break
                 samples_to_take = min(
                     samples_per_category, len(errors), remaining_samples)
-                representative_samples.extend(errors[:samples_to_take])
+                # Take most recent samples from this category
+                representative_samples.extend(errors[-samples_to_take:])
                 remaining_samples -= samples_to_take
 
         return representative_samples[:max_samples]
@@ -274,18 +304,16 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
             final_answer = sample.get("final_answer")
             explanation = sample.get("explanation")
             category = sample.get("category")
-            messages = sample.get("messages")
+            # messages = sample.get("messages")
 
             example = f"""### Episodic Memory Example {i} - Error Type: {category}
 
 Question: "{question}"
 My Previous Answer: "{final_answer}"
-My Previous Reasoning: "{messages}"
-
 
 Expected Answer: "{ground_truth}"
 
-**Self-Reflection**: {explanation}
+**Reflection**: {explanation}
 """
 
             formatted_examples.append(example)
@@ -293,13 +321,16 @@ Expected Answer: "{ground_truth}"
         header = "Based on my past reasoning experiences, here are some errors I've made and lessons I've learned:\n\n"
         return header + "\n\n".join(formatted_examples)
 
-    def post_reasoning(self,
-                       question: str,
-                       final_answer: str,
-                       messages: List[Dict[str, str]],
-                       sources: List[str]) -> None:
+    def _post_reasoning(self,
+                        question: str,
+                        final_answer: str,
+                        messages: List[Dict[str, str]],
+                        sources: List[str]) -> Optional[Dict[str, int]]:
         """
         Post-process the final answer after reasoning.
+
+        Returns:
+            Optional[Dict[str, int]]: Usage metrics from post-reasoning analysis, if any.
         """
         # Evaluate the final answer against the ground truth and if incorrect,
         # determine the reasoning step that led to the error.
@@ -319,9 +350,10 @@ ROUGE-1 score {r1:.2f}")
             sources_set = set(sources)
             actual_sources_set = set(actual_sources)
 
+            post_reflection_result = None
             if actual_sources_set.issubset(sources_set):
                 # All actual sources were retrieved, use post reflector to analyze reasoning error
-                explanation, category = post_reflector(
+                post_reflection_result = post_reflector(
                     question,
                     question_obj['answer'][0],
                     final_answer,
@@ -330,7 +362,7 @@ ROUGE-1 score {r1:.2f}")
                     missing_evidence=False)
             else:
                 # Missing evidence - not all actual sources were retrieved
-                explanation, category = post_reflector(
+                post_reflection_result = post_reflector(
                     question,
                     question_obj['answer'][0],
                     final_answer,
@@ -338,21 +370,28 @@ ROUGE-1 score {r1:.2f}")
                     [doc['content'] for doc in question_obj['docs']],
                     missing_evidence=True)
 
-            if explanation and category:
-                # Write to episodic memory instances of incorrect reasoning for future learning
-                self._episodic_memory.append({
-                    "id": {
-                        "question": question,
-                        "ground_truth": question_obj['answer'][0],
-                        "final_answer": final_answer,
-                        "messages": messages,
-                        "explanation": explanation,
-                        "category": category
-                    }
-                })
+            if post_reflection_result:
+                explanation, category, usage_metrics = post_reflection_result
 
-            Logger().debug(
-                f"Updated episodic memory with new entry. Total entries: {len(self._episodic_memory)}")
+                if explanation and category:
+                    # Write to episodic memory instances of incorrect reasoning for future learning
+                    self._episodic_memory.append({
+                        "id": {
+                            "question": question,
+                            "ground_truth": question_obj['answer'][0],
+                            "final_answer": final_answer,
+                            "messages": messages,
+                            "explanation": explanation,
+                            "category": category
+                        }
+                    })
+
+                Logger().debug(
+                    f"Updated episodic memory with new entry. Total entries: {len(self._episodic_memory)}")
+
+                return usage_metrics
+
+        return None
 
 
 # Default job arguments
