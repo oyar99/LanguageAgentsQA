@@ -20,14 +20,15 @@ def parse_structured_response(response_content: str) -> Optional[Dict[str, Any]]
     """
     try:
         # Try to extract JSON from the response
-        if '```json' in response_content:
-            json_start = response_content.find('```json') + 7
-            json_end = response_content.find('```', json_start)
-            json_str = response_content[json_start:json_end].strip()
-        elif '{' in response_content and '}' in response_content:
+        # Prioritize extracting JSON from code blocks if present in case there are nested JSON objects
+        if '{' in response_content and '}' in response_content:
             json_start = response_content.find('{')
             json_end = response_content.rfind('}') + 1
             json_str = response_content[json_start:json_end]
+        elif '```json' in response_content:
+            json_start = response_content.find('```json') + 7
+            json_end = response_content.find('```', json_start)
+            json_str = response_content[json_start:json_end].strip()
         else:
             # Fallback: try to parse the entire response
             json_str = response_content.strip()

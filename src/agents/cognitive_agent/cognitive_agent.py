@@ -302,7 +302,7 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
             question = sample.get("question")
             ground_truth = sample.get("ground_truth")
             final_answer = sample.get("final_answer")
-            explanation = sample.get("explanation")
+            correct_reasoning_chain = sample.get("correct_reasoning_chain")
             category = sample.get("category")
             # messages = sample.get("messages")
 
@@ -310,10 +310,11 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
 
 Question: "{question}"
 My Previous Answer: "{final_answer}"
-
 Expected Answer: "{ground_truth}"
 
-**Reflection**: {explanation}
+**Corrected Reasoning Chain:**
+
+{correct_reasoning_chain}
 """
 
             formatted_examples.append(example)
@@ -338,7 +339,7 @@ Expected Answer: "{ground_truth}"
 
         r1, _, _ = rouge_score(question_obj['answer'], final_answer)[0]
 
-        if r1 < 0.7:
+        if r1 < 0.5:  # Threshold for likely incorrect answer
             Logger().info(
                 f"Final answer for question '{question}' is likely incorrect with \
 ROUGE-1 score {r1:.2f}")
@@ -371,9 +372,9 @@ ROUGE-1 score {r1:.2f}")
                     missing_evidence=True)
 
             if post_reflection_result:
-                explanation, category, usage_metrics = post_reflection_result
+                correct_reasoning_chain, category, usage_metrics = post_reflection_result
 
-                if explanation and category:
+                if correct_reasoning_chain and category:
                     # Write to episodic memory instances of incorrect reasoning for future learning
                     self._episodic_memory.append({
                         "id": {
@@ -381,7 +382,7 @@ ROUGE-1 score {r1:.2f}")
                             "ground_truth": question_obj['answer'][0],
                             "final_answer": final_answer,
                             "messages": messages,
-                            "explanation": explanation,
+                            "correct_reasoning_chain": correct_reasoning_chain,
                             "category": category
                         }
                     })

@@ -47,7 +47,10 @@ def post_reflector(
     prompt = POST_REFLECTOR_PROMPT_BASE
     if missing_evidence:
         prompt += POST_REFLECTOR_MISSING_EVIDENCE_SECTION
-    prompt += POST_REFLECTOR_PROMPT_FOOTER
+
+    # Use template to inject the correct reasoning chain
+    prompt += POST_REFLECTOR_PROMPT_FOOTER.format(
+        correct_reasoning_chain=CORRECT_REASONING_CHAIN)
 
     # Build categories list dynamically
     categories = [
@@ -79,7 +82,7 @@ def post_reflector(
         "temperature": default_job_args['temperature'],
         "frequency_penalty": default_job_args['frequency_penalty'],
         "presence_penalty": default_job_args['presence_penalty'],
-        "max_completion_tokens": 500,
+        "max_completion_tokens": 1000,
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -89,9 +92,9 @@ def post_reflector(
                     "type": "object",
                     "properties": {
                         "category": {"type": "string", "enum": categories},
-                        "explanation": {"type": "string"},
+                        "correct_reasoning_chain": {"type": "string"},
                     },
-                    "required": ["category", "explanation"],
+                    "required": ["category", "correct_reasoning_chain"],
                     "additionalProperties": False
                 }
             }
@@ -117,7 +120,7 @@ def post_reflector(
         structured_response = parse_structured_response(
             result.choices[0].message.content.strip())
 
-        return (structured_response.get('explanation', None), 
+        return (structured_response.get('correct_reasoning_chain', None),
                 structured_response.get('category', 'Other'),
                 usage_metrics)
 
@@ -138,22 +141,53 @@ default_job_args = {
 }
 # pylint: enable=duplicate-code
 
-POST_REFLECTOR_PROMPT_BASE = '''You are an expert analysis assistant that evaluates why a QA \
-agent's answer is incorrect. Your task is to identify the specific error.
+POST_REFLECTOR_PROMPT_BASE = '''You are an expert analysis assistant that creates correct reasoning chains. \
+You will be provided with a question, the expected answer, the supporting evidence, and the answer provided \
+by a different QA agent along with its reasoning. \
+Your task is to demonstrate the proper thought process and search actions that would have led to the correct answer.
 
-Focus on connecting the evidence by identifying:
+Analyze the agent's incorrect reasoning and generate a corrected chain that strictly follows this format:
 
-1. **Misinterpretation**: Quote the specific text the agent used incorrectly and explain how it should have been interpreted.
-2. **Hallucination**: Quote any facts the agent invented that weren't in the retrieved text.
-3. **Reasoning Error**: Show the logical error by comparing what the agent concluded vs. what the evidence actually supports.
+**Iteration N:**
+```json
+{
+    "thought": "Clear reasoning about what information is needed",
+    "actions": ["search('specific query', depth)"]
+}
+```
+
+**Iteration N+1:**
+```json
+{
+    "thought": "Clear reasoning about what information is needed",
+    "actions": ["search('specific query', depth)"],
+    "observations": [["Retrieved document content that contains the needed information"]]
+}
+```
+
+**Final Iteration:**
+```json
+{
+    "thought": "Clear reasoning showing how the evidence leads to the correct conclusion",
+    "final_answer": "The correct answer"
+}
+```
+
+An iteration is either a thought/action pair, a thought/action/observation triplet, or the final thought/final_answer pair.
+When provided, actions and observations must not be empty lists.
+Observations must be strings from the actual provided supporting evidence.
+
+Identify the error category:
+1. **Misinterpretation**: Agent misunderstood retrieved text
+2. **Hallucination**: Agent invented facts not in retrieved text  
+3. **Reasoning Error**: Agent made logical errors in connecting evidence
 '''
 
-POST_REFLECTOR_MISSING_EVIDENCE_SECTION = '''4. **Missing Evidence**: Quote the key text that was missing from \
-retrieval but available in the supporting evidence.
+POST_REFLECTOR_MISSING_EVIDENCE_SECTION = '''4. **Missing Evidence**: Agent failed to retrieve key supporting evidence
 '''
 
 POST_REFLECTOR_PROMPT_FOOTER = '''
-Your explanation should be written as a self-reflective monologue, quoting the specific text pieces, connecting them to the error, and providing actionable suggestions for improvement.
+Generate a correct reasoning chain that would lead to the right answer, using the supporting evidence provided.
 
 ### Example
 
@@ -170,37 +204,77 @@ Agent's Answer: "Goldie Hawn"
 Agent's Reasoning:
 
 user: Who was married to the star of No Escape?
-system: {\
+system: {{\
 "thought": "I need to find the correct film titled 'No Escape' to identify its star and then look for their marital status.", \
-"actions": ["search('No Escape film cast')"],\
+"actions": ["search('No Escape film cast', 1)"],\
 "observations": [["No Escape (1936 film): No Escape is a 1936 British thriller film directed by Norman Lee and starring Valerie Hobson, \
 Leslie Perrins and Robert Cochran. The screenplay concerns a man who attempts to hide his friend for a month.", "Escape from L.A.: Escape from \
 L.A. (also known as John Carpenter's Escape from L.A. or Escape from Los Angeles) is a 1996 American postapocalyptic action film co-written, \
 co-scored, and directed by John Carpenter, co-written and produced by Debra Hill and Kurt Russell, with Russell also starring as Snake Plissken."]]\
-}
-system: {\
+}}
+system: {{\
 "thought": "Kurt Russell is the star of the 1996 film 'No Escape'. I need to find out who he is married to.", \
-"actions": ["search('Kurt Russell spouse')"],
+"actions": ["search('Kurt Russell spouse', 1)"],
 "observations": [["The Fox and the Hound: Mickey Rooney as Tod Kurt Russell as Copper Pearl Bailey as Big Mama Jack Albertson as Amos Slade Sandy \
 Duncan as Vixey Jeanette Nolan as Widow Tweed Pat Buttram as Chief John Fiedler as The Porcupine John McIntire as The Badger Dick Bakalyan as \
 Dinky Paul Winchell as Boomer Keith Coogan as Young Tod Corey Feldman as Young Copper"]]\
-}
-system: {\
+}}
+system: {{\
 "thought": "Kurt Russell is married to Goldie Hawn, so I will provide that as the final answer.", \
 "final_answer": "Goldie Hawn"\
-}
+}}
 
 Your response should be:
 
-{\
-"explanation": "Looking at my reasoning process, I can see where I went wrong. When I searched for 'No Escape film cast', I retrieved information about \
-both 'No Escape (1936 film): No Escape is a 1936 British thriller film directed by Norman Lee and starring Valerie Hobson, Leslie Perrins and Robert Cochran' \
-and 'Escape from L.A.: Escape from L.A. (also known as John Carpenter's Escape from L.A. or Escape from Los Angeles) is a 1996 American postapocalyptic \
-action film co-written, co-scored, and directed by John Carpenter, co-written and produced by Debra Hill and Kurt Russell, with Russell also starring as \
-Snake Plissken.' The problem was that I focused on Kurt Russell from 'Escape from L.A.' instead of recognizing that the question was asking about 'No \
-Escape (1936 film)' which clearly starred Valerie Hobson. I should have paid closer attention to the exact film title and realized that 'Escape from L.A.' \
-is a completely different movie from 'No Escape.' This misidentification led me down the wrong path entirely, causing me to search for Kurt Russell's marriage \
-instead of Valerie Hobson's. In the future, I need to be more careful about matching entity names exactly and not confusing similar titles.",\
-"category": "Misinterpretation"\
-}
+{{
+"correct_reasoning_chain": "{correct_reasoning_chain}",
+"category": "Misinterpretation"
+}}
 '''
+
+CORRECT_REASONING_CHAIN = """**Iteration 1:**
+```json
+{
+    "thought": "I need to find information about the film 'No Escape' and identify its star to determine who they were married to.",
+    "actions": ["search('No Escape film cast', 1)"]
+}
+```
+
+**Iteration 2:**
+```json
+{
+    "thought": "I need to find information about the film 'No Escape' and identify its star to determine who they were married to.",
+    "actions": ["search('No Escape film cast', 1)"],
+    "observations": [["No Escape (1936 film): No Escape is a 1936 British thriller film directed by Norman Lee and starring Valerie Hobson, \
+Leslie Perrins and Robert Cochran. The screenplay concerns a man who attempts to hide his friend for a month.", "Escape from L.A.: Escape from \
+L.A. (also known as John Carpenter's Escape from L.A. or Escape from Los Angeles) is a 1996 American postapocalyptic action film co-written, co-scored, and \
+directed by John Carpenter, co-written and produced by Debra Hill and Kurt Russell, with Russell also starring as Snake Plissken."]]
+}
+```
+
+**Iteration 3:**
+```json
+{
+    "thought": "I can see two different films in the results. There's 'No Escape (1936 film)' starring Valerie Hobson, Leslie Perrins and Robert Cochran, and \
+'Escape from L.A.' starring Kurt Russell. The question asks about 'No Escape', so I should focus on the 1936 film. Valerie Hobson appears to be the main star. \
+Now I need to find who was married to Valerie Hobson.",
+    "actions": ["search('Valerie Hobson husband', 1)"]
+}
+```
+
+**Iteration 4:**
+```json
+{
+    "thought": "I can see two different films in the results. There's 'No Escape (1936 film)' starring Valerie Hobson, Leslie Perrins and Robert Cochran, and 'Escape from L.A.' starring Kurt Russell. The question asks about 'No Escape', so I should focus on the 1936 film. Valerie Hobson appears to be the main star. Now I need to find who was married to Valerie Hobson.",
+    "actions": ["search('Valerie Hobson husband', 1)"],
+    "observations": [["Profumo was born in London, the son of former British government minister John Profumo and his wife, actress Valerie Hobson. The Profumo family is of Italian origin. David Profumo would have succeeded his father as 6th Baron Profumo in the nobility of the Kingdom of Sardinia, if the nobility of Italy had not been legally abolished after WW2. Like his father, he does not use this title."]]
+}
+```
+
+**Iteration 5:**
+```json
+{
+    "thought": "The evidence shows that Valerie Hobson was married to John Profumo. Since Valerie Hobson was the star of 'No Escape' (1936 film), the answer to who was married to the star of No Escape is John Profumo.",
+    "final_answer": "John Profumo"
+}
+```"""
