@@ -1,7 +1,6 @@
 """ReactRetriever agent for reasoning using custom instruction fine-tuned model with structured output schema.
 """
 # pylint: disable=duplicate-code
-import math
 import os
 from typing import Dict, List
 from colbert.infra import Run, RunConfig, ColBERTConfig
@@ -26,7 +25,8 @@ class ReactRetriever(IntelligentAgent):
         actions = {
             "search": Action(
                 "Search for relevant documents for the given query using a semantic retriever. \
-Argument d is the rate of the depth of the search. Must be a positive integer starting iteratively from 1.",
+Argument page is the page to request if more results are needed. Each page returns a fixed number of results. \
+Must be a positive integer starting from 1.",
                 self._search_documents
             )
         }
@@ -63,7 +63,7 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
     def _search_documents(
             self,
             query: str,
-            d: int = 1,
+            page: int = 1,
     ) -> tuple[List[str], List[str], Dict[str, int]]:
         """
         Search for documents using the ColBERT retriever.
@@ -75,16 +75,19 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
             tuple[List[str], List[str], Dict[str, int]]: Tuple containing list of observations (retrieved documents)
 , list of sources if any, and metrics if any.
         """
-        d = max(1, int(d))  # Ensure d is at least 1
-        # determine how many documents to retrieve using a logistic curve since too many documents
-        #  can lead to poor performance and increase token usage.
-        k = int(round(30/(1 + 5 * math.exp(-0.62 * (d - 1)))))
+        page = max(1, int(page))  # Ensure page is at least 1
+        k = page * 5
 
-        doc_ids, _ranking, scores = worker.searcher.search(
+        doc_ids, _, scores = worker.searcher.search(
             query, k=k)
 
+        # Skip to the correct page
+        start_index = (page - 1) * 5
+        doc_ids = doc_ids[start_index:start_index + 5]
+        scores = scores[start_index:start_index + 5]
+
         documents = []
-        for doc_id, _, score in zip(doc_ids, _ranking, scores):
+        for doc_id, score in zip(doc_ids, scores):
             documents.append({
                 'doc_id': self._corpus[doc_id]['doc_id'],
                 'content': self._corpus[doc_id]['content'],
@@ -96,8 +99,8 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
             f"Search results for query '{query}': Found {len(documents)} documents")
 
         return ([doc['content'] for doc in documents],
-                    doc_ids,
-                    {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0})
+                doc_ids,
+                {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0})
 
     def _init_searcher(self) -> None:
         """
@@ -179,8 +182,7 @@ Iteration 4:
     "thought": "I found that Ed Wood was an American filmmaker, but I need to confirm Scott Derrickson nationality to determine if they are from the same country. \
 I will search for more information on Scott Derrickson",
     "actions": ["search('Scott Derrickson's nationality', 2)"],
-    "observations": [["Scott Derrickson, known for his work in the horror genre, including \
-films like 'The Exorcism of Emily Rose' and 'Doctor Strange', has been recognized by the president of the United States.", "Scott Derrickson is an American film director, producer, and screenwriter"]]
+    "observations": [["Scott Derrickson is an American film director, producer, and screenwriter"]]
 }
 ```
 
@@ -226,7 +228,7 @@ Iteration 4:
 {
     "thought": "I did not find information about Kimbrough Memorial Stadium location, therefore I will search for more documents about it.",
     "actions": ["search('Kimbrough Memorial Stadium location', 2)"],
-    "observations": [["Kimbrough Memorial Stadium has a seating capacity of 8,500.", "Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District, and is primarily \
+    "observations": [["Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District, and is primarily \
 used for American football."]]
 }
 ```

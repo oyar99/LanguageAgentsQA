@@ -1,18 +1,23 @@
 """ReactAgentCustom for reasoning using custom instruction fine-tuned model with structured output schema.
 """
 # pylint: disable=duplicate-code
+import json
 import math
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from collections import defaultdict
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
+from sklearn.feature_extraction.text import TfidfVectorizer
 from evaluator.rogue_evaluator import rouge_score
 from logger.logger import Logger
 from models.action import Action
 from models.agent import StatefulIntelligentAgent, NoteBook
 from models.dataset import Dataset
+from models.structural_search import StructuralSearchEngine
 from plugins.post_reflector import post_reflector
 import utils.agent_worker as worker
+from utils.structure_response import parse_structured_response
 
 
 class CognitiveAgent(StatefulIntelligentAgent):
@@ -38,11 +43,15 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
         prompt_examples = PROMPT_EXAMPLE_TOOLS_LOCOMO if args.dataset == 'locomo' else PROMPT_EXAMPLES_TOOLS
 
         # 4 agents that learn independently in parallel
-        super().__init__(actions, prompt_examples, args, cores=2)
+        super().__init__(actions, prompt_examples, args, cores=1)
         self._base_prompt = self._prompt
         self._enable_reflection = False
 
         self._episodic_memory: List[Dict[str, Any]] = []
+
+        # Initialize structural search engine
+        self._structural_search = StructuralSearchEngine()
+        Logger().info("Initialized Structural Search Engine")
 
     def index(self, dataset: Dataset) -> None:
         """
@@ -156,11 +165,10 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
         # Extract information from the notebook for post-processing
         final_answer = notebook.get_notes()
         messages = notebook.get_messages()
-        sources = [source['doc_id'] for source in notebook.get_sources()]
 
         # Perform post-processing analysis and update token usage
         post_reasoning_usage = self._post_reasoning(
-            question, final_answer, messages, sources)
+            question, final_answer, messages)
 
         # Update notebook with additional usage metrics from post-reasoning
         if post_reasoning_usage:
@@ -174,225 +182,285 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
 
         return notebook
 
-    def _pre_reasoning(self, question: str) -> List[Dict[str, str]]:
+    def _pre_reasoning(self, question: str) -> None:
         """
-        Pre-process the question before reasoning by extracting representative error samples
-        from episodic memory and updating the prompt with additional examples.
+        Pre-process the question before reasoning by finding structurally similar questions
+        from episodic memory and updating the prompt with relevant examples.
         """
         Logger().debug(f"Pre-reasoning for question: {question}")
         Logger().debug(f"Episodic memory size: {len(self._episodic_memory)}")
 
         if not self._episodic_memory:
+            Logger().debug("No episodic memory entries available")
             return
 
-        # Group errors by category
-        error_categories = {}
-        for memory_entry in self._episodic_memory:
-            entry_data = memory_entry.get("id", {})
-            category = entry_data.get("category", "Unknown")
+        # Rebuild the structural search index with current episodic memory
+        self._rebuild_structural_index()
 
-            if category not in error_categories:
-                error_categories[category] = []
-            error_categories[category].append(entry_data)
+        # Search for structurally similar questions
+        similar_questions = self._structural_search.search(question, top_k=100)
 
-        Logger().debug(
-            f"Episodic memory contains {len(self._episodic_memory)} entries across {len(error_categories)} categories")
+        if not similar_questions:
+            Logger().debug("No structurally similar questions found")
+            return
 
-        # Extract representative samples using heuristics
-        representative_samples = self._extract_representative_samples(
-            error_categories)
+        # Filter examples based on similarity threshold (0.4) and select appropriate mix
+        valid_examples = [
+            (q_data, skeleton, score) for q_data, skeleton, score in similar_questions
+            if score > 0.4
+        ]
 
-        Logger().debug(
-            f"Extracted {len(representative_samples)} representative samples for prompt update")
+        if not valid_examples:
+            Logger().debug("No examples meet similarity threshold of 0.4")
+            return
 
-        # Update prompt with episodic memory examples
-        if representative_samples:
-            episodic_examples = self._format_episodic_examples(
-                representative_samples)
+        # Separate into correct and incorrect examples
+        correct_examples = [
+            ex for ex in valid_examples if ex[0].get('is_correct')]
+        incorrect_examples = [
+            ex for ex in valid_examples if not ex[0].get('is_correct')]
 
-            # Add episodic memory section to the existing prompt
-            episodic_section = f"\n\n## MY LEARNING EXPERIENCE\n\n{episodic_examples}"
+        selected_examples = []
+
+        # Add up to 7 incorrect examples
+        selected_examples.extend(incorrect_examples[:7])
+
+        # Add 1 correct example if available
+        if correct_examples:
+            selected_examples.extend(correct_examples[:1])
+
+        if selected_examples:
+            Logger().debug(
+                f"Selected {len(selected_examples)} structurally similar examples for prompt")
+
+            # Reverse selected_examples so more similar structural questions appear at the bottom
+            # so the model can pay more attention to it
+            selected_examples.reverse()
+
+            # Format and add examples to prompt
+            episodic_examples = self._format_structural_examples(
+                selected_examples)
+            episodic_section = episodic_examples
             self._prompt = self._base_prompt + episodic_section
 
-            Logger().debug(
-                f"Updated prompt with {len(representative_samples)} episodic memory examples")
+            Logger().debug("Updated prompt with structural examples")
+        else:
+            Logger().debug("No valid structural examples to include")
 
-    def _extract_representative_samples(self,
-                                        error_categories: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    def _rebuild_structural_index(self) -> None:
         """
-        Extract at most 30 representative samples using distribution heuristics.
-        Prioritizes the most recent entries for each category to ensure fresh learning.
-
-        Args:
-            error_categories: Dictionary mapping error categories to lists of error instances
-
-        Returns:
-            List of representative error samples
+        Rebuild the structural search index with current episodic memory entries.
         """
-        max_samples = 30
-        total_errors = sum(len(errors) for errors in error_categories.values())
+        if not self._episodic_memory:
+            return
 
-        if total_errors == 0:
-            return []
+        # Clear existing index
+        self._structural_search.questions = []
+        self._structural_search.skeletons = []
+        self._structural_search.skeleton_to_questions = defaultdict(list)
 
-        representative_samples = []
+        # Add all episodic memory entries to the index
+        for i, memory_entry in enumerate(self._episodic_memory):
+            entry_data = memory_entry.get("id", {})
+            question = entry_data.get("question")
 
-        # Calculate sample distribution based on category frequencies
-        category_counts = {cat: len(errors)
-                           for cat, errors in error_categories.items()}
-        sorted_categories = sorted(
-            category_counts.items(), key=lambda x: x[1], reverse=True)
+            if question:
+                # Convert question to structural skeleton
+                skeleton = self._structural_search.question_to_skeleton(
+                    question)
 
-        # Heuristic 1: If one error type dominates (>50%), allocate more samples to it
-        dominant_category = sorted_categories[0]
-        if dominant_category[1] / total_errors > 0.5:
-            # Allocate 60% samples to dominant category, remaining to others
-            samples_for_dominant = min(
-                int(max_samples * 0.6), len(error_categories[dominant_category[0]]))
-            remaining_samples = max_samples - samples_for_dominant
+                # Add to index
+                self._structural_search.questions.append(entry_data)
+                self._structural_search.skeletons.append(skeleton)
+                self._structural_search.skeleton_to_questions[skeleton].append(
+                    i)
 
-            # Add most recent samples from dominant category
-            representative_samples.extend(
-                error_categories[dominant_category[0]][-samples_for_dominant:]
+        # Rebuild TF-IDF vectors if we have questions
+        if self._structural_search.skeletons:
+            self._structural_search.vectorizer = TfidfVectorizer(
+                ngram_range=(1, 3),
+                max_features=5000,
+                token_pattern=r'\b\w+\b|<[^>]+>',
+                lowercase=False
+            )
+            self._structural_search.skeleton_vectors = self._structural_search.vectorizer.fit_transform(
+                self._structural_search.skeletons
             )
 
-            # Distribute remaining samples among other categories
-            other_categories = sorted_categories[1:]
-            if other_categories and remaining_samples > 0:
-                samples_per_other = max(
-                    1, remaining_samples // len(other_categories))
-                for cat_name, _ in other_categories:
-                    if remaining_samples <= 0:
-                        break
-                    samples_to_take = min(samples_per_other, len(
-                        error_categories[cat_name]), remaining_samples)
-                    # Take most recent samples from this category
-                    representative_samples.extend(
-                        error_categories[cat_name][-samples_to_take:])
-                    remaining_samples -= samples_to_take
-        else:
-            # Heuristic 2: Balanced distribution - distribute samples evenly across categories
-            samples_per_category = max(1, max_samples // len(error_categories))
-            remaining_samples = max_samples
+            Logger().debug(
+                f"Rebuilt structural index with {len(self._structural_search.questions)} questions")
 
-            for cat_name, errors in error_categories.items():
-                if remaining_samples <= 0:
-                    break
-                samples_to_take = min(
-                    samples_per_category, len(errors), remaining_samples)
-                # Take most recent samples from this category
-                representative_samples.extend(errors[-samples_to_take:])
-                remaining_samples -= samples_to_take
-
-        return representative_samples[:max_samples]
-
-    def _format_episodic_examples(self, samples: List[Dict[str, Any]]) -> str:
+    def _format_structural_examples(self, examples: List[Tuple[Dict[str, Any], str, float]]) -> str:
         """
-        Format episodic memory samples as monologue examples for the prompt.
+        Format structurally similar examples for the prompt.
 
         Args:
-            samples: List of representative error samples
+            examples: List of (question_data, skeleton, similarity_score) tuples
 
         Returns:
-            Formatted string with episodic examples
+            Formatted string with structural examples
         """
         formatted_examples = []
 
-        for i, sample in enumerate(samples, 1):
-            question = sample.get("question")
-            ground_truth = sample.get("ground_truth")
-            final_answer = sample.get("final_answer")
-            correct_reasoning_chain = sample.get("correct_reasoning_chain")
-            category = sample.get("category")
-            # messages = sample.get("messages")
+        for i, (question_data, _, _) in enumerate(examples, 3):
+            question = question_data.get("question")
+            correct_reasoning_chain = question_data.get(
+                "correct_reasoning_chain", "")
 
-            example = f"""### Episodic Memory Example {i} - Error Type: {category}
+            example = f"""### Example {i}
 
 Question: "{question}"
-My Previous Answer: "{final_answer}"
-Expected Answer: "{ground_truth}"
-
-**Corrected Reasoning Chain:**
 
 {correct_reasoning_chain}
 """
 
             formatted_examples.append(example)
 
-        header = "Based on my past reasoning experiences, here are some errors I've made and lessons I've learned:\n\n"
-        return header + "\n\n".join(formatted_examples)
+        return "\n\n".join(formatted_examples)
+
+    def _extract_reasoning_chain_from_messages(self, messages: List[Dict[str, str]]) -> Optional[str]:
+        """
+        Extract reasoning chain from messages for correct answers.
+
+        Args:
+            messages: List of conversation messages
+
+        Returns:
+            Formatted reasoning chain string or None if extraction fails
+        """
+        try:
+            # Find all system messages after the user's question
+            system_messages = []
+            user_question_found = False
+
+            for message in messages:
+                if message.get("role") == "user":
+                    user_question_found = True
+                    continue
+
+                if user_question_found and message.get("role") == "system":
+                    content = message.get("content", "").strip()
+                    if content:
+                        system_messages.append(content)
+
+            if not system_messages:
+                return None
+
+            # Format messages as iterations, splitting intermediate iterations into two parts for clarity
+            formatted_iterations = []
+            iteration_num = 1
+
+            for content in system_messages:
+                # Use the same parsing method as the base agent
+                structured_response = parse_structured_response(content)
+
+                if structured_response is None:
+                    # If parsing failed, return None - we don't want incomplete data
+                    return None
+
+                # Use the same fallback logic as the base agent
+                thought = structured_response.get("thought", "")
+                actions = structured_response.get("actions", [])
+                final_answer = structured_response.get("final_answer", None)
+                observations = structured_response.get("observations", [])
+
+                # If this is a final answer, format it and we're done
+                if final_answer is not None:
+                    iteration = f'**Iteration {iteration_num}:**\n```json\n{{\n    "thought": "{thought}",\n    "final_answer": "{final_answer}"\n}}\n```'
+                    formatted_iterations.append(iteration)
+                    break
+
+                if actions is None or len(actions) <= 0:
+                    Logger().debug(
+                        f"Skipping iteration {iteration_num} - no actions found")
+                    return None
+
+                # For intermediate responses, create two separate iterations:
+                # 1. First iteration: thought + actions (the plan)
+                plan_iteration = f'**Iteration {iteration_num}:**\n```json\n{{\n    "thought": "{thought}",\n    "actions": {json.dumps(actions)}\n}}\n```'
+                formatted_iterations.append(plan_iteration)
+                iteration_num += 1
+
+                # 2. Second iteration: thought + actions + observations (the execution result)
+                result_iteration = f'**Iteration {iteration_num}:**\n```json\n{{\n    "thought": "{thought}",\n    "actions": {json.dumps(actions)},\n    "observations": {json.dumps(observations)}\n}}\n```'
+                formatted_iterations.append(result_iteration)
+                iteration_num += 1
+
+            if not formatted_iterations:
+                return None
+
+            return "\n\n".join(formatted_iterations)
+
+        except Exception as e:
+            Logger().error(
+                f"Error extracting reasoning chain from messages: {e}")
+            return None
 
     def _post_reasoning(self,
                         question: str,
                         final_answer: str,
-                        messages: List[Dict[str, str]],
-                        sources: List[str]) -> Optional[Dict[str, int]]:
+                        messages: List[Dict[str, str]]) -> Optional[Dict[str, int]]:
         """
-        Post-process the final answer after reasoning.
+        Post-process the final answer after reasoning and update episodic memory.
 
         Returns:
             Optional[Dict[str, int]]: Usage metrics from post-reasoning analysis, if any.
         """
-        # Evaluate the final answer against the ground truth and if incorrect,
-        # determine the reasoning step that led to the error.
+        # Evaluate the final answer against the ground truth
         question_obj = self._questions_map.get(question)
+        if not question_obj:
+            Logger().warning(f"Question object not found for: {question}")
+            return None
 
         r1, _, _ = rouge_score(question_obj['answer'], final_answer)[0]
+        is_correct = r1 >= 0.5  # Threshold for correctness
 
-        if r1 < 0.5:  # Threshold for likely incorrect answer
-            Logger().info(
-                f"Final answer for question '{question}' is likely incorrect with \
-ROUGE-1 score {r1:.2f}")
+        Logger().info(
+            f"Question '{question}' - ROUGE-1: {r1:.3f} - {'CORRECT' if is_correct else 'INCORRECT'}")
 
-            actual_sources = [doc['doc_id']
-                              for doc in question_obj.get('docs', [])]
+        usage_metrics = None
+        correct_reasoning_chain = None
 
-            # Check if all actual sources are contained in the retrieved sources
-            sources_set = set(sources)
-            actual_sources_set = set(actual_sources)
-
-            post_reflection_result = None
-            if actual_sources_set.issubset(sources_set):
-                # All actual sources were retrieved, use post reflector to analyze reasoning error
-                post_reflection_result = post_reflector(
-                    question,
-                    question_obj['answer'][0],
-                    final_answer,
-                    messages,
-                    [doc['content'] for doc in question_obj['docs']],
-                    missing_evidence=False)
-            else:
-                # Missing evidence - not all actual sources were retrieved
-                post_reflection_result = post_reflector(
-                    question,
-                    question_obj['answer'][0],
-                    final_answer,
-                    messages,
-                    [doc['content'] for doc in question_obj['docs']],
-                    missing_evidence=True)
+        if not is_correct:
+            # Get corrected reasoning chain for incorrect answers
+            post_reflection_result = post_reflector(
+                question,
+                question_obj['answer'][0],
+                [doc['content'] for doc in question_obj['docs']],
+                question_obj.get('decomposition', [])
+            )
 
             if post_reflection_result:
-                correct_reasoning_chain, category, usage_metrics = post_reflection_result
+                correct_reasoning_chain, usage_metrics = post_reflection_result
+        else:
+            # For correct answers, extract reasoning chain from messages
+            correct_reasoning_chain = self._extract_reasoning_chain_from_messages(
+                messages)
 
-                if correct_reasoning_chain and category:
-                    # Write to episodic memory instances of incorrect reasoning for future learning
-                    self._episodic_memory.append({
-                        "id": {
-                            "question": question,
-                            "ground_truth": question_obj['answer'][0],
-                            "final_answer": final_answer,
-                            "messages": messages,
-                            "correct_reasoning_chain": correct_reasoning_chain,
-                            "category": category
-                        }
-                    })
+        # Only add to episodic memory if we have a valid reasoning chain
+        if correct_reasoning_chain:
+            episodic_entry = {
+                "id": {
+                    "question": question,
+                    "ground_truth": question_obj['answer'][0],
+                    "final_answer": final_answer,
+                    "messages": messages,
+                    "correct_reasoning_chain": correct_reasoning_chain,
+                    "is_correct": is_correct,
+                    "rouge_score": r1
+                }
+            }
 
-                Logger().debug(
-                    f"Updated episodic memory with new entry. Total entries: {len(self._episodic_memory)}")
+            self._episodic_memory.append(episodic_entry)
 
-                return usage_metrics
+            Logger().debug(
+                f"Updated episodic memory with new {'correct' if is_correct else 'incorrect'} entry. "
+                f"Total entries: {len(self._episodic_memory)}")
+        else:
+            Logger().debug(
+                f"Skipping episodic memory update - no valid reasoning chain for question: {question}")
 
-        return None
+        return usage_metrics
 
 
 # Default job arguments

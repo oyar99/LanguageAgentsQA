@@ -6,60 +6,54 @@ from typing import Dict, List, Optional, Tuple
 
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
-from utils.structure_response import parse_structured_response
 
 
 def post_reflector(
         question: str,
         expected_answer: str,
-        final_answer: str,
-        messages: List[Dict[str, str]],
         expected_evidences: List[str],
-        missing_evidence: bool = True
-) -> Optional[Tuple[str, str, Dict[str, int]]]:
+        decomposition: List[dict] = None
+) -> Optional[Tuple[str, Dict[str, int]]]:
     """
     Analyze why an answer is incorrect by comparing it to the expected answer and evidence.
 
     Args:
         question (str): The question being answered.
         expected_answer (str): The correct/expected answer.
-        final_answer (str): The answer provided by the agent.
-        messages (List[Dict[str, str]]): List of exchanges between QA agent and user.
         expected_evidences (List[str]): List of expected supporting evidence.
-        missing_evidence (bool): Whether missing evidence should be included in analysis.
+        decomposition (List[dict], optional): Question decomposition steps for grounding.
 
     Returns:
-        Optional[Tuple[str, str, Dict[str, int]]]: A tuple containing explanation, category, and usage metrics.
+        Optional[Tuple[str, Dict[str, int]]]: A tuple containing explanation, and usage metrics.
         Returns None if analysis fails.
     """
-    # Format the conversation history excluding the system prompt
-    conversation_history = "\n".join([
-        f"{msg.get('role')}: {msg.get('content')}"
-        for msg in messages[1:]
-    ])
+
+    decomposition = decomposition or []
 
     # Format expected evidences
     formatted_evidences = "\n".join([
         f"- {evidence}" for evidence in expected_evidences
     ])
 
-    # Build the prompt dynamically based on missing_evidence parameter
+    # Format decomposition if available
+    decomposition_text = ""
+    if decomposition:
+        decomposition_steps = []
+        for i, step in enumerate(decomposition, 1):
+            if 'question' in step and 'answer' in step:
+                # MuSiQue style decomposition
+                decomposition_steps.append(
+                    f"{i}. {step['question']} → {step['answer']}")
+            elif 'title' in step:
+                # Hotpot style supporting facts
+                decomposition_steps.append(
+                    f"{i}. Supporting fact from: {step['title']}")
+
+        if decomposition_steps:
+            decomposition_text = "Reasoning Steps:\n" + \
+                "\n".join(decomposition_steps) + "\n"
+
     prompt = POST_REFLECTOR_PROMPT_BASE
-    if missing_evidence:
-        prompt += POST_REFLECTOR_MISSING_EVIDENCE_SECTION
-
-    # Use template to inject the correct reasoning chain
-    prompt += POST_REFLECTOR_PROMPT_FOOTER.format(
-        correct_reasoning_chain=CORRECT_REASONING_CHAIN)
-
-    # Build categories list dynamically
-    categories = [
-        "Misinterpretation",
-        "Hallucination",
-        "Reasoning Error"
-    ]
-    if missing_evidence:
-        categories.append("Missing Evidence")
 
     open_ai_request = {
         "custom_id": "post_reflection_analysis",
@@ -74,31 +68,14 @@ def post_reflector(
                 "content":
                 f"Question: \"{question}\"\n"
                 f"Expected Answer: \"{expected_answer}\"\n"
-                f"Supporting Evidence:\n{formatted_evidences}\n\n"
-                f"Agent's Answer: \"{final_answer}\"\n"
-                f"Agent's Reasoning:\n{conversation_history}"
+                f"Supporting Evidence:\n{formatted_evidences}\n"
+                f"{decomposition_text}\n"
             }
         ],
         "temperature": default_job_args['temperature'],
         "frequency_penalty": default_job_args['frequency_penalty'],
         "presence_penalty": default_job_args['presence_penalty'],
-        "max_completion_tokens": 1000,
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "strict": True,
-                "name": "post_reflection_response",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "category": {"type": "string", "enum": categories},
-                        "correct_reasoning_chain": {"type": "string"},
-                    },
-                    "required": ["category", "correct_reasoning_chain"],
-                    "additionalProperties": False
-                }
-            }
-        }
+        "max_completion_tokens": 1000
     }
 
     Logger().debug(
@@ -117,13 +94,10 @@ def post_reflector(
             "total_tokens": result.usage.total_tokens
         }
 
-        structured_response = parse_structured_response(
-            result.choices[0].message.content.strip())
+        # Extract the reasoning chain directly from the response
+        correct_reasoning_chain = result.choices[0].message.content.strip()
 
-        return (structured_response.get('correct_reasoning_chain', None),
-                structured_response.get('category', 'Other'),
-                usage_metrics)
-
+        return (correct_reasoning_chain, usage_metrics)
     # pylint: disable=broad-except
     except Exception as e:
         Logger().error(
@@ -142,11 +116,13 @@ default_job_args = {
 # pylint: enable=duplicate-code
 
 POST_REFLECTOR_PROMPT_BASE = '''You are an expert analysis assistant that creates correct reasoning chains. \
-You will be provided with a question, the expected answer, the supporting evidence, and the answer provided \
-by a different QA agent along with its reasoning. \
-Your task is to demonstrate the proper thought process and search actions that would have led to the correct answer.
+You will be provided with a question, the expected answer, supporting evidence, and reasoning steps. \
+Your task is to demonstrate the proper thought process and search actions that lead to the correct answer.
 
-Analyze the agent's incorrect reasoning and generate a corrected chain that strictly follows this format:
+Use reasoning steps as a guide to structure your search queries and reasoning flow. \
+Each reasoning step should typically correspond to one or more search actions in your reasoning chain.
+
+Generate a reasoning chain that strictly follows this format:
 
 **Iteration N:**
 ```json
@@ -165,6 +141,9 @@ Analyze the agent's incorrect reasoning and generate a corrected chain that stri
 }
 ```
 
+**Iteration N+2:**
+... (repeat as necessary, alternating between thought/action and thought/action/observation) ...
+
 **Final Iteration:**
 ```json
 {
@@ -173,21 +152,16 @@ Analyze the agent's incorrect reasoning and generate a corrected chain that stri
 }
 ```
 
+Each iteration must strictly adhere to the following rules:
+
+- Thoughts can ONLY refer to information from previous observations from prior iterations, never directly from the provided supporting evidence
+- Observations must contain EXACT text snippets from the supporting evidence provided
+- Actions and observations must never be empty when present
+- Each intermediate iteration follows the exact same thought+actions, followed by another iteration with observations added
+
 An iteration is either a thought/action pair, a thought/action/observation triplet, or the final thought/final_answer pair.
 When provided, actions and observations must not be empty lists.
 Observations must be strings from the actual provided supporting evidence.
-
-Identify the error category:
-1. **Misinterpretation**: Agent misunderstood retrieved text
-2. **Hallucination**: Agent invented facts not in retrieved text  
-3. **Reasoning Error**: Agent made logical errors in connecting evidence
-'''
-
-POST_REFLECTOR_MISSING_EVIDENCE_SECTION = '''4. **Missing Evidence**: Agent failed to retrieve key supporting evidence
-'''
-
-POST_REFLECTOR_PROMPT_FOOTER = '''
-Generate a correct reasoning chain that would lead to the right answer, using the supporting evidence provided.
 
 ### Example
 
@@ -200,39 +174,9 @@ The screenplay concerns a man who attempts to hide his friend for a month.
 Italian origin. David Profumo would have succeeded his father as 6th Baron Profumo in the nobility of the Kingdom of Sardinia, if the nobility of Italy \
 had not been legally abolished after WW2. Like his father, he does not use this title.
 
-Agent's Answer: "Goldie Hawn"
-Agent's Reasoning:
+Your response:
 
-user: Who was married to the star of No Escape?
-system: {{\
-"thought": "I need to find the correct film titled 'No Escape' to identify its star and then look for their marital status.", \
-"actions": ["search('No Escape film cast', 1)"],\
-"observations": [["No Escape (1936 film): No Escape is a 1936 British thriller film directed by Norman Lee and starring Valerie Hobson, \
-Leslie Perrins and Robert Cochran. The screenplay concerns a man who attempts to hide his friend for a month.", "Escape from L.A.: Escape from \
-L.A. (also known as John Carpenter's Escape from L.A. or Escape from Los Angeles) is a 1996 American postapocalyptic action film co-written, \
-co-scored, and directed by John Carpenter, co-written and produced by Debra Hill and Kurt Russell, with Russell also starring as Snake Plissken."]]\
-}}
-system: {{\
-"thought": "Kurt Russell is the star of the 1996 film 'No Escape'. I need to find out who he is married to.", \
-"actions": ["search('Kurt Russell spouse', 1)"],
-"observations": [["The Fox and the Hound: Mickey Rooney as Tod Kurt Russell as Copper Pearl Bailey as Big Mama Jack Albertson as Amos Slade Sandy \
-Duncan as Vixey Jeanette Nolan as Widow Tweed Pat Buttram as Chief John Fiedler as The Porcupine John McIntire as The Badger Dick Bakalyan as \
-Dinky Paul Winchell as Boomer Keith Coogan as Young Tod Corey Feldman as Young Copper"]]\
-}}
-system: {{\
-"thought": "Kurt Russell is married to Goldie Hawn, so I will provide that as the final answer.", \
-"final_answer": "Goldie Hawn"\
-}}
-
-Your response should be:
-
-{{
-"correct_reasoning_chain": "{correct_reasoning_chain}",
-"category": "Misinterpretation"
-}}
-'''
-
-CORRECT_REASONING_CHAIN = """**Iteration 1:**
+**Iteration 1:**
 ```json
 {
     "thought": "I need to find information about the film 'No Escape' and identify its star to determine who they were married to.",
@@ -277,4 +221,5 @@ Now I need to find who was married to Valerie Hobson.",
     "thought": "The evidence shows that Valerie Hobson was married to John Profumo. Since Valerie Hobson was the star of 'No Escape' (1936 film), the answer to who was married to the star of No Escape is John Profumo.",
     "final_answer": "John Profumo"
 }
-```"""
+```
+'''

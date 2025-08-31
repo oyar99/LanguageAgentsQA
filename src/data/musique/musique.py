@@ -2,6 +2,7 @@
 
 import json
 import os
+import random
 from logger.logger import Logger
 from models.dataset import Dataset, DatasetSample, DatasetSampleInstance
 from models.document import Document
@@ -28,6 +29,12 @@ class MuSiQue(Dataset):
         conversation_id = self._args.conversation
 
         with open(os.path.join("data", "musique", "musique_dev.json"), encoding="utf-8") as musique_dataset:
+            data = json.load(musique_dataset)
+
+            if self._args.shuffle:
+                random.shuffle(data)
+                Logger().info("Questions shuffled randomly")
+
             dataset = [
                 DatasetSample(
                     sample_id=sample['id'],
@@ -41,11 +48,15 @@ class MuSiQue(Dataset):
                             question=sample['question'],
                             answer=[str(sample['answer'])] +
                             sample['answer_aliases'],
-                            category=QuestionCategory.MULTI_HOP
+                            category=QuestionCategory.MULTI_HOP,
+                            decomposition=[{
+                                'question': step['question'],
+                                'answer': step['answer']
+                            } for step in sample.get('question_decomposition', [])]
                         )], self._args.questions, self._args.category)
                     )
                 )
-                for sample in json.load(musique_dataset)
+                for sample in data
                 if conversation_id is None or sample['id'] == conversation_id
             ]
             dataset = super().process_dataset(dataset)
@@ -66,7 +77,8 @@ class MuSiQue(Dataset):
             corpus = json.load(musique_corpus)
             # pylint: disable=duplicate-code
             corpus = [
-                Document(doc_id=get_content_hash(doc['text']), content=f'{doc["title"]}:{doc["text"]}')
+                Document(doc_id=get_content_hash(
+                    doc['text']), content=f'{doc["title"]}:{doc["text"]}')
                 for doc in corpus
             ]
             super()._log_dataset_stats(corpus)

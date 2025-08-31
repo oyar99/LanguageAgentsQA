@@ -45,7 +45,10 @@ class Hotpot(Dataset):
                             category=QuestionCategory.MULTI_HOP
                             if sample['type'] == 'bridge' else (
                                 QuestionCategory.COMPARISON if sample['type'] == 'comparison' else QuestionCategory.NONE
-                            )
+                            ),
+                            decomposition=[{
+                                'title': fact[0],
+                            } for fact in sample.get('supporting_facts', [])]
                         )], self._args.questions, self._args.category)
                     )
                 )

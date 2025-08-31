@@ -33,6 +33,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-l', '--limit', type=int,
                         help='limit the number of samples to process. \
 Ignored if conversation id is provided (optional)')
+    parser.add_argument('-s', '--shuffle', action='store_true',
+                        help='randomly shuffle dataset questions (optional)')
 
     # Predict mode arguments
     parser.add_argument('-m', '--model', choices=['gpt-4o-mini', 'gpt-4o-mini-2', 'o3-mini', 'gpt-4o-mini-batch',
