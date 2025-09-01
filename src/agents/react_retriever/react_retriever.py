@@ -25,8 +25,8 @@ class ReactRetriever(IntelligentAgent):
         actions = {
             "search": Action(
                 "Search for relevant documents for the given query using a semantic retriever. \
-Argument page is the page to request if more results are needed. Each page returns a fixed number of results. \
-Must be a positive integer starting from 1.",
+When no relevant results are returned, you **must only** increase the page parameter by one each time. \
+Page must be a positive integer starting from 1.",
                 self._search_documents
             )
         }
@@ -171,7 +171,7 @@ Iteration 3:
 ```json
 {
     "thought": "I found that Ed Wood was an American filmmaker, but I need to confirm Scott Derrickson nationality to determine if they are from the same country. \
-I will search for more information on Scott Derrickson",
+I need to request for the second page of results on Scott Derrickson's nationality",
     "actions": ["search('Scott Derrickson's nationality', 2)"],
 }
 ```
@@ -180,7 +180,7 @@ Iteration 4:
 ```json
 {
     "thought": "I found that Ed Wood was an American filmmaker, but I need to confirm Scott Derrickson nationality to determine if they are from the same country. \
-I will search for more information on Scott Derrickson",
+I need to request for the second page of results on Scott Derrickson's nationality",
     "actions": ["search('Scott Derrickson's nationality', 2)"],
     "observations": [["Scott Derrickson is an American film director, producer, and screenwriter"]]
 }
@@ -218,7 +218,7 @@ Iteration 2:
 Iteration 3:
 ```json
 {
-    "thought": "I did not find information about Kimbrough Memorial Stadium location, therefore I will search for more documents about it.",
+    "thought": "I did not find information about Kimbrough Memorial Stadium location, therefore I will request the next page of results.",
     "actions": ["search('Kimbrough Memorial Stadium location', 2)"],
 }
 ```
@@ -226,7 +226,7 @@ Iteration 3:
 Iteration 4:
 ```json
 {
-    "thought": "I did not find information about Kimbrough Memorial Stadium location, therefore I will search for more documents about it.",
+    "thought": "I did not find information about Kimbrough Memorial Stadium location, therefore I will request the next page of results.",
     "actions": ["search('Kimbrough Memorial Stadium location', 2)"],
     "observations": [["Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District, and is primarily \
 used for American football."]]

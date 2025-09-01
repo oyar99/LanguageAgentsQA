@@ -128,7 +128,7 @@ Generate a reasoning chain that strictly follows this format:
 ```json
 {
     "thought": "Clear reasoning about what information is needed",
-    "actions": ["search('specific query', depth)"]
+    "actions": ["search('specific query')"]
 }
 ```
 
@@ -136,7 +136,7 @@ Generate a reasoning chain that strictly follows this format:
 ```json
 {
     "thought": "Clear reasoning about what information is needed",
-    "actions": ["search('specific query', depth)"],
+    "actions": ["search('specific query')"],
     "observations": [["Retrieved document content that contains the needed information"]]
 }
 ```
@@ -173,6 +173,10 @@ The screenplay concerns a man who attempts to hide his friend for a month.
 - Profumo was born in London, the son of former British government minister John Profumo and his wife, actress Valerie Hobson. The Profumo family is of \
 Italian origin. David Profumo would have succeeded his father as 6th Baron Profumo in the nobility of the Kingdom of Sardinia, if the nobility of Italy \
 had not been legally abolished after WW2. Like his father, he does not use this title.
+Reasoning Steps: 
+
+No Escape >> cast member → Valerie Hobson
+#1 >> spouse → John Profumo
 
 Your response:
 
@@ -180,7 +184,7 @@ Your response:
 ```json
 {
     "thought": "I need to find information about the film 'No Escape' and identify its star to determine who they were married to.",
-    "actions": ["search('No Escape film cast', 1)"]
+    "actions": ["search('No Escape film')"]
 }
 ```
 
@@ -188,7 +192,7 @@ Your response:
 ```json
 {
     "thought": "I need to find information about the film 'No Escape' and identify its star to determine who they were married to.",
-    "actions": ["search('No Escape film cast', 1)"],
+    "actions": ["search('No Escape film')"],
     "observations": [["No Escape (1936 film): No Escape is a 1936 British thriller film directed by Norman Lee and starring Valerie Hobson, \
 Leslie Perrins and Robert Cochran. The screenplay concerns a man who attempts to hide his friend for a month.", "Escape from L.A.: Escape from \
 L.A. (also known as John Carpenter's Escape from L.A. or Escape from Los Angeles) is a 1996 American postapocalyptic action film co-written, co-scored, and \
@@ -202,7 +206,7 @@ directed by John Carpenter, co-written and produced by Debra Hill and Kurt Russe
     "thought": "I can see two different films in the results. There's 'No Escape (1936 film)' starring Valerie Hobson, Leslie Perrins and Robert Cochran, and \
 'Escape from L.A.' starring Kurt Russell. The question asks about 'No Escape', so I should focus on the 1936 film. Valerie Hobson appears to be the main star. \
 Now I need to find who was married to Valerie Hobson.",
-    "actions": ["search('Valerie Hobson husband', 1)"]
+    "actions": ["search('Valerie Hobson husband')"]
 }
 ```
 
@@ -210,7 +214,7 @@ Now I need to find who was married to Valerie Hobson.",
 ```json
 {
     "thought": "I can see two different films in the results. There's 'No Escape (1936 film)' starring Valerie Hobson, Leslie Perrins and Robert Cochran, and 'Escape from L.A.' starring Kurt Russell. The question asks about 'No Escape', so I should focus on the 1936 film. Valerie Hobson appears to be the main star. Now I need to find who was married to Valerie Hobson.",
-    "actions": ["search('Valerie Hobson husband', 1)"],
+    "actions": ["search('Valerie Hobson husband')"],
     "observations": [["Profumo was born in London, the son of former British government minister John Profumo and his wife, actress Valerie Hobson. The Profumo family is of Italian origin. David Profumo would have succeeded his father as 6th Baron Profumo in the nobility of the Kingdom of Sardinia, if the nobility of Italy had not been legally abolished after WW2. Like his father, he does not use this title."]]
 }
 ```

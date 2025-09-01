@@ -25,7 +25,9 @@ class ReactAgentCustom(IntelligentAgent):
         self._args = args
         actions = {
             "search": Action(
-                "Search for relevant documents for the given query using a semantic retriever.",
+                "Search for relevant documents for the given query using a semantic retriever. \
+You will obtain more relevant results by formulating queries scoped to specific entities or \
+keywords related to the question.",
                 self._search_documents
             )
         }

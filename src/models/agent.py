@@ -921,7 +921,6 @@ commentary, explanations, reasoning, or notes in your final response. \
 If the answer can be a single word (e.g., Yes, No, a date, or an object), please provide just that word.
 
 You should decompose the question into multiple sub-questions if necessary, and search for relevant documents for each sub-question. \
-You will obtain more relevant results by formulating queries scoped to specific entities or keywords related to the question.
 
 You can choose the following tools to find relevant documents.
 

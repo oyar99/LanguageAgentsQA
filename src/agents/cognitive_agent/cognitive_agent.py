@@ -35,8 +35,9 @@ class CognitiveAgent(StatefulIntelligentAgent):
         self._args = args
         actions = {
             "search": Action(
-                "Search for relevant documents for the given query using a semantic retriever.\
-Argument d is the rate of the depth of the search. Must be a positive integer starting from 1.",
+                "Search for relevant documents for the given query using a semantic retriever. \
+You will obtain more relevant results by formulating queries scoped to specific entities or \
+keywords related to the question.",
                 self._search_documents
             )
         }
@@ -88,7 +89,6 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
     def _search_documents(
             self,
             query: str,
-            d: int = 1,
     ) -> tuple[List[str], List[str], Dict[str, int]]:
         """
         Search for documents using the ColBERT retriever.
@@ -100,10 +100,7 @@ Argument d is the rate of the depth of the search. Must be a positive integer st
             tuple[List[str], List[str], Dict[str, int]]: Tuple containing list of observations (retrieved documents)
 , list of sources if any, and metrics if any.
         """
-        d = max(1, int(d))  # Ensure d is at least 1
-        # determine how many documents to retrieve using a logistic curve since too many documents
-        #  can lead to poor performance and increase token usage.
-        k = int(round(30/(1 + 5 * math.exp(-0.62 * (d - 1)))))
+        k = 5
 
         doc_ids, _ranking, scores = worker.searcher.search(
             query, k=k)
@@ -413,7 +410,7 @@ Question: "{question}"
             return None
 
         r1, _, _ = rouge_score(question_obj['answer'], final_answer)[0]
-        is_correct = r1 >= 0.5  # Threshold for correctness
+        is_correct = r1 >= 0.65  # Threshold for correctness
 
         Logger().info(
             f"Question '{question}' - ROUGE-1: {r1:.3f} - {'CORRECT' if is_correct else 'INCORRECT'}")
@@ -479,7 +476,7 @@ Iteration 1:
 ```json
 {
     "thought": "I need to find the nationalities of both Scott Derrickson and Ed Wood to compare them.",
-    "actions": ["search('Scott Derrickson's nationality', 1)", "search('Ed Wood's nationality', 1)"]
+    "actions": ["search('Scott Derrickson's nationality')", "search('Ed Wood's nationality')"]
 }
 ```
 
@@ -487,34 +484,14 @@ Iteration 2:
 ```json
 {
     "thought": "I need to find the nationalities of both Scott Derrickson and Ed Wood to compare them.",
-    "actions": ["search('Scott Derrickson's nationality', 1)", "search('Ed Wood's nationality', 1)"],
-    "observations": [["Scott Derrickson, known for his work in the horror genre, including \
-films like 'The Exorcism of Emily Rose' and 'Doctor Strange', has been recognized by the president of the United States."], ["Ed Wood was an American filmmaker, actor, and writer, often regarded as one of the worst directors in film history. He is best known \
+    "actions": ["search('Scott Derrickson's nationality')", "search('Ed Wood's nationality')"],
+    "observations": [["Scott Derrickson is an American film director, producer, and screenwriter. He is known for his work in the horror genre, including \
+films like 'The Exorcism of Emily Rose' and 'Doctor Strange'."], ["Ed Wood was an American filmmaker, actor, and writer, often regarded as one of the worst directors in film history. He is best known \
 for his cult classic 'Plan 9 from Outer Space'."]]
 }
 ```
 
 Iteration 3:
-```json
-{
-    "thought": "I found that Ed Wood was an American filmmaker, but I need to confirm Scott Derrickson nationality to determine if they are from the same country. \
-I will search for more information on Scott Derrickson",
-    "actions": ["search('Scott Derrickson's nationality', 2)"],
-}
-```
-
-Iteration 4:
-```json
-{
-    "thought": "I found that Ed Wood was an American filmmaker, but I need to confirm Scott Derrickson nationality to determine if they are from the same country. \
-I will search for more information on Scott Derrickson",
-    "actions": ["search('Scott Derrickson's nationality', 2)"],
-    "observations": [["Scott Derrickson, known for his work in the horror genre, including \
-films like 'The Exorcism of Emily Rose' and 'Doctor Strange', has been recognized by the president of the United States.", "Scott Derrickson is an American film director, producer, and screenwriter"]]
-}
-```
-
-Iteration 5:
 ```json
 {
     "thought": "Both Scott Derrickson and Ed Wood are American based on the retrieved information, so they are of the same nationality.",
@@ -530,7 +507,7 @@ Iteration 1:
 ```json
 {
     "thought": "I need to find where Kimbrough Memorial Stadium is located.",
-    "actions": ["search('Kimbrough Memorial Stadium location', 1)"]
+    "actions": ["search('Kimbrough Memorial Stadium location')"]
 }
 ```
 
@@ -538,47 +515,30 @@ Iteration 2:
 ```json
 {
     "thought": "I need to find where Kimbrough Memorial Stadium is located.",
-    "actions": ["search('Kimbrough Memorial Stadium location', 1)"],
-    "observations": [["Kimbrough Memorial Stadium has a seating capacity of 8,500."]]
+    "actions": ["search('Kimbrough Memorial Stadium location')"],
+    "observations": [["Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District, and is primarily \
+used for American football."]]
 }
 ```
 
 Iteration 3:
 ```json
 {
-    "thought": "I did not find information about Kimbrough Memorial Stadium location, therefore I will search for more documents about it.",
-    "actions": ["search('Kimbrough Memorial Stadium location', 2)"],
+    "thought": "The stadium is in Canyon, Texas, but I need to find which county Canyon is in.",
+    "actions": ["search('Canyon Texas county')"]
 }
 ```
 
 Iteration 4:
 ```json
 {
-    "thought": "I did not find information about Kimbrough Memorial Stadium location, therefore I will search for more documents about it.",
-    "actions": ["search('Kimbrough Memorial Stadium location', 2)"],
-    "observations": [["Kimbrough Memorial Stadium has a seating capacity of 8,500.", "Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District, and is primarily \
-used for American football."]]
-}
-```
-
-Iteration 5:
-```json
-{
     "thought": "The stadium is in Canyon, Texas, but I need to find which county Canyon is in.",
-    "actions": ["search('Canyon Texas county', 1)"]
-}
-```
-
-Iteration 6:
-```json
-{
-    "thought": "The stadium is in Canyon, Texas, but I need to find which county Canyon is in.",
-    "actions": ["search('Canyon Texas county', 1)"],
+    "actions": ["search('Canyon Texas county')"],
     "observations": [["Canyon is a city in, and the county seat of, Randall County, Texas, United States. The population was 13,303 at the 2010 census."]]
 }
 ```
 
-Iteration 7:
+Iteration 5:
 ```json
 {
     "thought": "Kimbrough Memorial Stadium is in Canyon, Texas, and Canyon is in Randall County.",
