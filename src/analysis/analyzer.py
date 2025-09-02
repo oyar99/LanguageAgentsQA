@@ -29,7 +29,7 @@ from typing import Dict, List
 from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
-from logger.logger import Logger, MainProcessLogger 
+from logger.logger import Logger, MainProcessLogger
 from models.question_answer import QuestionAnswer
 from data.musique.musique import MuSiQue
 from evaluator.rogue_evaluator import rouge_score
@@ -164,6 +164,8 @@ def analyze_learning_metrics(scores):  # pylint: disable=too-many-locals
     }
 
 # pylint: disable-next=too-many-locals,too-many-statements
+
+
 def create_whole_system_plot(scores, save_path="rouge1_whole_system.eps",
                              score_type="ROUGE-1"):
     """
@@ -273,6 +275,8 @@ def create_whole_system_plot(scores, save_path="rouge1_whole_system.eps",
         f"Whole system learning progression plot saved to: {save_path}")
 
 # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+
+
 def create_learning_progression_plot(scores, save_path="rouge1_learning_progression.eps",
                                      score_type="ROUGE-1"):
     """
@@ -802,9 +806,9 @@ def main():
     # Create learning progression plot based on mode
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     mode_suffix = "2agent" if mode == "2-agent" else "whole"
-    plot_filename = os.path.join(output_dir, 
-                                f"{score_type.lower().replace('-', '_')}_learning_progression_"
-                                f"{mode_suffix}_{timestamp}.eps")
+    plot_filename = os.path.join(output_dir,
+                                 f"{score_type.lower().replace('-', '_')}_learning_progression_"
+                                 f"{mode_suffix}_{timestamp}.eps")
 
     if mode == "2-agent":
         create_learning_progression_plot(scores, plot_filename, score_type)
