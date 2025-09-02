@@ -29,12 +29,10 @@ from typing import Dict, List
 from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
-
-# Import project modules
-from logger.logger import Logger, MainProcessLogger  # pylint: disable=import-error
-from models.question_answer import QuestionAnswer  # pylint: disable=import-error
-from data.musique.musique import MuSiQue  # pylint: disable=import-error
-from evaluator.rogue_evaluator import rouge_score  # pylint: disable=import-error
+from logger.logger import Logger, MainProcessLogger 
+from models.question_answer import QuestionAnswer
+from data.musique.musique import MuSiQue
+from evaluator.rogue_evaluator import rouge_score
 
 
 def calculate_rouge1_score(expected_answers, actual_answer):
@@ -795,11 +793,18 @@ def main():
     stats = calculate_statistics(scores)
     print_results(scores, stats, score_type)
 
+    # Create output directory if it doesn't exist
+    # Go up from src/analysis to project root, then to output/misc
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    output_dir = os.path.join(project_root, "output", "misc")
+    os.makedirs(output_dir, exist_ok=True)
+
     # Create learning progression plot based on mode
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     mode_suffix = "2agent" if mode == "2-agent" else "whole"
-    plot_filename = (f"{score_type.lower().replace('-', '_')}_learning_progression_"
-                     f"{mode_suffix}_{timestamp}.eps")
+    plot_filename = os.path.join(output_dir, 
+                                f"{score_type.lower().replace('-', '_')}_learning_progression_"
+                                f"{mode_suffix}_{timestamp}.eps")
 
     if mode == "2-agent":
         create_learning_progression_plot(scores, plot_filename, score_type)
@@ -837,11 +842,9 @@ def main():
 
 
 if __name__ == "__main__":
-    # Initialize logger for the analysis
-    Logger().info("Starting ROUGE score analysis")
+    Logger().info("Starting QA analysis")
 
     main()
-    Logger().info("ROUGE score analysis completed successfully")
+    Logger().info("QA analysis completed successfully")
 
-    # Shutdown logger at the end
     MainProcessLogger().shutdown()

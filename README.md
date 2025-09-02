@@ -58,12 +58,6 @@ Install required packages.
 pip install -r requirements.txt
 ```
 
-Install `faiss_gpu-1.7.3`.
-
-```bash
-pip install https://github.com/kyamagu/faiss-wheels/releases/download/v1.7.3/faiss_gpu-1.7.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-```
-
 ## Closed-Source Models
 
 The script supports any **closed-source models** that allow **batch deployments** via the Azure Open AI API and **open-source models** that are available via VLLM.

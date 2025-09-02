@@ -35,6 +35,7 @@ class StructuralSearchEngine:
 
         Logger().debug("Structural Search Engine initialized.")
 
+    # pylint: disable-next=too-many-branches,too-many-return-statements
     def normalize_token(self, token):
         """
         Convert a spaCy token to its structural representation.
@@ -50,73 +51,68 @@ class StructuralSearchEngine:
             return token.text.lower()
 
         # Auxiliary verbs (is, was, do, can, etc.)
-        elif token.pos_ == "AUX":
+        if token.pos_ == "AUX":
             return "<AUX>"
 
         # Proper nouns -> entities (ignore specific names)
-        elif token.pos_ == "PROPN":
+        if token.pos_ == "PROPN":
             return "<ENTITY>"
 
         # Common nouns
-        elif token.pos_ == "NOUN":
+        if token.pos_ == "NOUN":
             return "<NOUN>"
 
         # Numbers and quantifiers
-        elif token.pos_ == "NUM":
+        if token.pos_ == "NUM":
             return "<NUMBER>"
 
         # Verbs
-        elif token.pos_ == "VERB":
+        if token.pos_ == "VERB":
             # Distinguish past participles (passive voice)
             if token.tag_ == "VBN":
                 return "<VERB_PP>"
-            else:
-                return "<VERB>"
+            return "<VERB>"
 
         # Adjectives
-        elif token.pos_ == "ADJ":
+        if token.pos_ == "ADJ":
             if token.tag_ == "JJR":  # Comparative
                 return "<COMP_ADJ>"
-            elif token.tag_ == "JJS":  # Superlative
+            if token.tag_ == "JJS":  # Superlative
                 return "<SUP_ADJ>"
-            else:
-                return "<ADJ>"
+            return "<ADJ>"
 
         # Adverbs
-        elif token.pos_ == "ADV":
+        if token.pos_ == "ADV":
             if token.tag_ == "RBR":  # Comparative
                 return "<COMP_ADV>"
-            elif token.tag_ == "RBS":  # Superlative
+            if token.tag_ == "RBS":  # Superlative
                 return "<SUP_ADV>"
-            else:
-                return "<ADV>"
+            return "<ADV>"
 
         # Prepositions - keep some key ones distinct for better structure
-        elif token.pos_ == "ADP":
+        if token.pos_ == "ADP":
             if token.text.lower() in ["of", "in", "on", "at", "to", "for", "with", "by", "after", "from"]:
                 return f"<{token.text.upper()}>"
-            else:
-                return "<PREP>"
+            return "<PREP>"
 
         # Conjunctions
-        elif token.pos_ in ["CCONJ", "SCONJ"]:
+        if token.pos_ in ["CCONJ", "SCONJ"]:
             return "<CONJ>"
 
         # Pronouns
-        elif token.pos_ == "PRON":
+        if token.pos_ == "PRON":
             return "<PRON>"
 
         # Determiners
-        elif token.pos_ == "DET":
+        if token.pos_ == "DET":
             return "<DET>"
 
         # Possessive markers
-        elif token.tag_ == "POS":
+        if token.tag_ == "POS":
             return "'s"
 
         # Keep punctuation and other words as-is (lowercased)
-        else:
-            return token.text.lower()
+        return token.text.lower()
 
     def question_to_skeleton(self, question: str) -> str:
         """
@@ -156,6 +152,7 @@ class StructuralSearchEngine:
 
         return 1.0 - similarity  # Convert similarity to distance
 
+    # pylint: disable-next=too-many-locals
     def search(self, query: str, top_k: int = 5) -> List[Tuple[Dict, str, float]]:
         """
         Search for structurally similar questions.

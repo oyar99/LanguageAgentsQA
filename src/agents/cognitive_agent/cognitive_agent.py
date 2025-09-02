@@ -2,7 +2,6 @@
 """
 # pylint: disable=duplicate-code
 import json
-import math
 import os
 from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
@@ -19,7 +18,7 @@ from plugins.post_reflector import post_reflector
 import utils.agent_worker as worker
 from utils.structure_response import parse_structured_response
 
-
+# pylint: disable-next=too-many-instance-attributes
 class CognitiveAgent(StatefulIntelligentAgent):
     """
     ReactAgentCustom for reasoning over indexed documents using a custom instruction fine-tuned model
@@ -46,7 +45,6 @@ keywords related to the question.",
         # 4 agents that learn independently in parallel
         super().__init__(actions, prompt_examples, args, cores=1)
         self._base_prompt = self._prompt
-        self._enable_reflection = False
 
         self._episodic_memory: List[Dict[str, Any]] = []
 
@@ -171,7 +169,8 @@ keywords related to the question.",
         if post_reasoning_usage:
             current_usage = notebook.get_usage_metrics()
             updated_usage = {
-                "completion_tokens": current_usage.get("completion_tokens", 0) + post_reasoning_usage.get("completion_tokens", 0),
+                "completion_tokens": (
+                    current_usage.get("completion_tokens", 0) + post_reasoning_usage.get("completion_tokens", 0)),
                 "prompt_tokens": current_usage.get("prompt_tokens", 0) + post_reasoning_usage.get("prompt_tokens", 0),
                 "total_tokens": current_usage.get("total_tokens", 0) + post_reasoning_usage.get("total_tokens", 0)
             }
@@ -315,6 +314,7 @@ Question: "{question}"
 
         return "\n\n".join(formatted_examples)
 
+
     def _extract_reasoning_chain_from_messages(self, messages: List[Dict[str, str]]) -> Optional[str]:
         """
         Extract reasoning chain from messages for correct answers.
@@ -325,73 +325,74 @@ Question: "{question}"
         Returns:
             Formatted reasoning chain string or None if extraction fails
         """
-        try:
-            # Find all system messages after the user's question
-            system_messages = []
-            user_question_found = False
+        system_messages = []
+        user_question_found = False
 
-            for message in messages:
-                if message.get("role") == "user":
-                    user_question_found = True
-                    continue
+        for message in messages:
+            if message.get("role") == "user":
+                user_question_found = True
+                continue
 
-                if user_question_found and message.get("role") == "system":
-                    content = message.get("content", "").strip()
-                    if content:
-                        system_messages.append(content)
+            if user_question_found and message.get("role") == "system":
+                content = message.get("content").strip()
+                if content:
+                    system_messages.append(content)
 
-            if not system_messages:
-                return None
-
-            # Format messages as iterations, splitting intermediate iterations into two parts for clarity
-            formatted_iterations = []
-            iteration_num = 1
-
-            for content in system_messages:
-                # Use the same parsing method as the base agent
-                structured_response = parse_structured_response(content)
-
-                if structured_response is None:
-                    # If parsing failed, return None - we don't want incomplete data
-                    return None
-
-                # Use the same fallback logic as the base agent
-                thought = structured_response.get("thought", "")
-                actions = structured_response.get("actions", [])
-                final_answer = structured_response.get("final_answer", None)
-                observations = structured_response.get("observations", [])
-
-                # If this is a final answer, format it and we're done
-                if final_answer is not None:
-                    iteration = f'**Iteration {iteration_num}:**\n```json\n{{\n    "thought": "{thought}",\n    "final_answer": "{final_answer}"\n}}\n```'
-                    formatted_iterations.append(iteration)
-                    break
-
-                if actions is None or len(actions) <= 0:
-                    Logger().debug(
-                        f"Skipping iteration {iteration_num} - no actions found")
-                    return None
-
-                # For intermediate responses, create two separate iterations:
-                # 1. First iteration: thought + actions (the plan)
-                plan_iteration = f'**Iteration {iteration_num}:**\n```json\n{{\n    "thought": "{thought}",\n    "actions": {json.dumps(actions)}\n}}\n```'
-                formatted_iterations.append(plan_iteration)
-                iteration_num += 1
-
-                # 2. Second iteration: thought + actions + observations (the execution result)
-                result_iteration = f'**Iteration {iteration_num}:**\n```json\n{{\n    "thought": "{thought}",\n    "actions": {json.dumps(actions)},\n    "observations": {json.dumps(observations)}\n}}\n```'
-                formatted_iterations.append(result_iteration)
-                iteration_num += 1
-
-            if not formatted_iterations:
-                return None
-
-            return "\n\n".join(formatted_iterations)
-
-        except Exception as e:
-            Logger().error(
-                f"Error extracting reasoning chain from messages: {e}")
+        if not system_messages:
             return None
+
+        # Format messages as iterations, splitting intermediate iterations into two parts
+        formatted_iterations = []
+        iteration_num = 1
+
+        for content in system_messages:
+            structured_response = parse_structured_response(content)
+
+            if structured_response is None:
+                return None
+
+            # Use the same fallback logic as the base agent
+            thought = structured_response.get("thought", "")
+            actions = structured_response.get("actions", [])
+            final_answer = structured_response.get("final_answer", None)
+            observations = structured_response.get("observations", [])
+
+            # If this is a final answer, format it and we're done
+            if final_answer is not None:
+                iteration = (
+                    f'**Iteration {iteration_num}:**'
+                    f'\n```json\n{{\n    "thought": "{thought}",\n    "final_answer": "{final_answer}"\n}}\n```'
+                )
+                formatted_iterations.append(iteration)
+                break
+
+            if actions is None or len(actions) <= 0:
+                Logger().warn(
+                    f"Skipping iteration {iteration_num} - no actions found")
+                return None
+
+            # For intermediate responses, create two separate iterations:
+            # 1. First iteration: thought + actions (the plan)
+            iteration = (
+                f'**Iteration {iteration_num}:**'
+                f'\n```json\n{{\n    "thought": "{thought}",\n    "actions": {json.dumps(actions)}\n}}\n```'
+            )
+            formatted_iterations.append(iteration)
+            iteration_num += 1
+
+            # 2. Second iteration: thought + actions + observations (the execution result)
+            iteration = (
+                f'**Iteration {iteration_num}:**\n```json'
+                f'\n{{\n    "thought": "{thought}",\n    "actions": {json.dumps(actions)},'
+                f'\n    "observations": {json.dumps(observations)}\n}}\n```'
+            )
+            formatted_iterations.append(iteration)
+            iteration_num += 1
+
+        if not formatted_iterations:
+            return None
+
+        return "\n\n".join(formatted_iterations)
 
     def _post_reasoning(self,
                         question: str,
