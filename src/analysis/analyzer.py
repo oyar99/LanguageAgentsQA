@@ -164,8 +164,6 @@ def analyze_learning_metrics(scores):  # pylint: disable=too-many-locals
     }
 
 # pylint: disable-next=too-many-locals,too-many-statements
-
-
 def create_whole_system_plot(scores, save_path="rouge1_whole_system.eps",
                              score_type="ROUGE-1"):
     """
@@ -275,8 +273,6 @@ def create_whole_system_plot(scores, save_path="rouge1_whole_system.eps",
         f"Whole system learning progression plot saved to: {save_path}")
 
 # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-
-
 def create_learning_progression_plot(scores, save_path="rouge1_learning_progression.eps",
                                      score_type="ROUGE-1"):
     """
