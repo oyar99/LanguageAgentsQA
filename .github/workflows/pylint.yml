@@ -21,7 +21,7 @@ jobs:
     - name: Run unit tests
       run: |
         cd src
-        python -m unittest discover -s . -p "test_*.py" -v
+        python run_tests.py
     - name: Analysing the code with pylint
       run: |
         pylint $(git ls-files '*.py')

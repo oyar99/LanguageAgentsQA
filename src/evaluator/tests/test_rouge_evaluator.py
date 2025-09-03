@@ -8,9 +8,10 @@ import unittest
 from typing import List, Tuple
 
 from evaluator.rogue_evaluator import rouge_score, eval_rogue_score
+from integration_tests.integration_test import IntegrationTest
 
 
-class TestRougeScore(unittest.TestCase):
+class TestRougeScore(IntegrationTest):
     """Test cases for the rouge_score function."""
 
     def test_rouge_score_perfect_match(self) -> None:

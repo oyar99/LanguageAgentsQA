@@ -81,14 +81,17 @@ class MainProcessLogger(BaseLogger):
             '%(asctime)s - %(levelname)s - %(message)s')
         ch.setFormatter(formatter)
 
-        # Create file handler
-        log_dir = os.path.join(os.path.normpath(
-            os.getcwd() + os.sep + os.pardir), 'logs')
+        # Create file handler only if file logging is not disabled
+        disable_file_logging = os.getenv("DISABLE_FILE_LOGGING", "0") == "1"
+        fh = None
+        if not disable_file_logging:
+            log_dir = os.path.join(os.path.normpath(
+                os.getcwd() + os.sep + os.pardir), 'logs')
 
-        log_fname = os.path.join(log_dir, f'app-{self._run_id}.log')
-        fh = logging.FileHandler(log_fname, encoding='utf-8')
-        fh.setLevel(self._log_level)
-        fh.setFormatter(formatter)
+            log_fname = os.path.join(log_dir, f'app-{self._run_id}.log')
+            fh = logging.FileHandler(log_fname, encoding='utf-8')
+            fh.setLevel(self._log_level)
+            fh.setFormatter(formatter)
 
         self._q = Queue(-1)
 
@@ -97,9 +100,13 @@ class MainProcessLogger(BaseLogger):
         enable_console_logging = os.getenv(
             "ENABLE_CONSOLE_LOGGING", "0") == "1"
         if enable_console_logging:
-            handlers = [ch, fh]
+            if not disable_file_logging and fh:
+                handlers = [ch, fh]
+            else:
+                handlers = [ch]
         else:
-            handlers = [fh]
+            if not disable_file_logging and fh:
+                handlers = [fh]
 
         self._ql = QueueListener(self._q, *handlers)
         self._ql.start()
