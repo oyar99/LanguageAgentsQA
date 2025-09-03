@@ -64,9 +64,13 @@ No Escape >> cast member → Valerie Hobson
 """
     few_shot_examples = MULTIHOP_QA_EXAMPLES.format(
         reasoning_example=reasoning_sample
-    ) if args.dataset != 'locomo' else CONVERSATIONAL_QA_EXAMPLES
+    ) if args.dataset != 'locomo' and decomposition_text else (
+        MULTIHOP_QA_EXAMPLES.format(
+            reasoning_example=""
+        ) if args.dataset != 'locomo' else CONVERSATIONAL_QA_EXAMPLES
+    )
 
-    prompt = POST_REFLECTOR_PROMPT_BASE + "\n\n" + few_shot_examples
+    prompt = POST_REFLECTOR_PROMPT_BASE + "\n" + few_shot_examples
 
     open_ai_request = {
         "custom_id": "post_reflection_analysis",
@@ -88,7 +92,7 @@ No Escape >> cast member → Valerie Hobson
         "temperature": default_job_args['temperature'],
         "frequency_penalty": default_job_args['frequency_penalty'],
         "presence_penalty": default_job_args['presence_penalty'],
-        "max_completion_tokens": 1000
+        "max_completion_tokens": 1200
     }
 
     Logger().debug(
@@ -118,15 +122,12 @@ No Escape >> cast member → Valerie Hobson
         return None
 
 
-# pylint: disable=duplicate-code
 # Default job arguments
 default_job_args = {
     'temperature': 0.0,
-    'max_completion_tokens': 1000,
     'frequency_penalty': 0.0,
     'presence_penalty': 0.0
 }
-# pylint: enable=duplicate-code
 
 POST_REFLECTOR_PROMPT_BASE = '''You are an expert analysis assistant that creates correct reasoning chains. \
 You will be provided with a question, the expected answer, supporting evidence, and reasoning steps. \

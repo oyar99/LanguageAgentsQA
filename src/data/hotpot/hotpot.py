@@ -2,6 +2,7 @@
 
 import json
 import os
+import random
 from logger.logger import Logger
 from models.dataset import Dataset, DatasetSample, DatasetSampleInstance
 from models.document import Document
@@ -31,6 +32,11 @@ class Hotpot(Dataset):
         file_path = os.path.join(
             "data", "hotpot", "hotpot_dev_distractor_v1.json")
         with open(file_path, encoding="utf-8") as hotpot_dataset:
+            data = json.load(hotpot_dataset)
+
+            if self._args.shuffle:
+                random.shuffle(data)
+
             dataset = [
                 DatasetSample(
                     sample_id=sample['_id'],
@@ -52,7 +58,7 @@ class Hotpot(Dataset):
                         )], self._args.questions, self._args.category)
                     )
                 )
-                for sample in json.load(hotpot_dataset)
+                for sample in data
                 if conversation_id is None or sample['_id'] == conversation_id
             ]
             dataset = super().process_dataset(dataset)

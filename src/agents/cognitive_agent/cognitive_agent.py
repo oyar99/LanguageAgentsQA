@@ -20,6 +20,8 @@ from utils.dataset_utils import get_complete_evidence
 from utils.structure_response import parse_structured_response
 
 # pylint: disable-next=too-many-instance-attributes
+
+
 class CognitiveAgent(StatefulIntelligentAgent):
     """
     ReactAgentCustom for reasoning over indexed documents using a custom instruction fine-tuned model
@@ -153,7 +155,7 @@ keywords related to the question.",
 
         # Pre-process the question before reasoning by extracting representative error samples
         # from episodic memory and updating the prompt with additional examples
-        self._pre_reasoning(question)
+        pre_reasoning_usage = self._pre_reasoning(question)
 
         # Get the notebook from the parent reasoning process
         notebook = super().reason(question)
@@ -162,24 +164,25 @@ keywords related to the question.",
         final_answer = notebook.get_notes()
         messages = notebook.get_messages()
 
-        # Perform post-processing analysis and update token usage
-        post_reasoning_usage = self._post_reasoning(
+        # Perform post-processing analysis
+        self._post_reasoning(
             question, final_answer, messages)
 
-        # Update notebook with additional usage metrics from post-reasoning
-        if post_reasoning_usage:
+        # Update notebook with additional usage metrics from pre/post reasoning tools
+        if pre_reasoning_usage:
             current_usage = notebook.get_usage_metrics()
             updated_usage = {
                 "completion_tokens": (
-                    current_usage.get("completion_tokens", 0) + post_reasoning_usage.get("completion_tokens", 0)),
-                "prompt_tokens": current_usage.get("prompt_tokens", 0) + post_reasoning_usage.get("prompt_tokens", 0),
-                "total_tokens": current_usage.get("total_tokens", 0) + post_reasoning_usage.get("total_tokens", 0)
+                    current_usage.get("completion_tokens", 0) + pre_reasoning_usage.get("completion_tokens", 0)),
+                "prompt_tokens": current_usage.get("prompt_tokens", 0) + pre_reasoning_usage.get("prompt_tokens", 0),
+                "total_tokens": current_usage.get("total_tokens", 0) + pre_reasoning_usage.get("total_tokens", 0)
             }
             notebook.update_usage_metrics(updated_usage)
 
         return notebook
 
-    def _pre_reasoning(self, question: str) -> None:
+    # pylint: disable-next=too-many-locals
+    def _pre_reasoning(self, question: str) -> Dict[str, int] | None:
         """
         Pre-process the question before reasoning by finding structurally similar questions
         from episodic memory and updating the prompt with relevant examples.
@@ -189,7 +192,7 @@ keywords related to the question.",
 
         if not self._episodic_memory:
             Logger().debug("No episodic memory entries available")
-            return
+            return None
 
         # Rebuild the structural search index with current episodic memory
         self._rebuild_structural_index()
@@ -199,7 +202,7 @@ keywords related to the question.",
 
         if not similar_questions:
             Logger().debug("No structurally similar questions found")
-            return
+            return None
 
         # Filter examples based on similarity threshold (0.4) and select appropriate mix
         valid_examples = [
@@ -209,7 +212,7 @@ keywords related to the question.",
 
         if not valid_examples:
             Logger().debug("No examples meet similarity threshold of 0.4")
-            return
+            return None
 
         # Separate into correct and incorrect examples
         correct_examples = [
@@ -217,7 +220,51 @@ keywords related to the question.",
         incorrect_examples = [
             ex for ex in valid_examples if not ex[0].get('is_correct')]
 
+        usage_metrics = None
+
+        # For the incorrect examples, we implement eager loading of reasoning chains
+        # Meaning we only compute the reasoning chains until we need them here so
+        # we need to check if they are already present, if not we compute them
+        for i, (q_data, skeleton, score) in enumerate(incorrect_examples):
+            if 'correct_reasoning_chain' in q_data and q_data['correct_reasoning_chain']:
+                Logger().debug(
+                    f"Skipping reasoning chain extraction for question: {q_data['question']} - already present")
+                continue
+
+            question_obj = self._questions_map.get(q_data['question'])
+
+            # get ground truth supporting documents
+            evidence = get_complete_evidence(
+                question_obj, self._corpus, self._args.dataset)
+
+            post_reflection_result = post_reflector(
+                self._args,
+                q_data['question'],
+                q_data['ground_truth'],
+                [doc['content'] for doc in evidence],
+                question_obj.get('decomposition', [])
+            )
+
+            if post_reflection_result:
+                reasoning_chain, usage_metrics = post_reflection_result
+
+                if reasoning_chain:
+                    incorrect_examples[i] = (
+                        {**q_data, 'correct_reasoning_chain': reasoning_chain},
+                        skeleton,
+                        score
+                    )
+
+                    # Update the episodic memory entry as well
+                    for i, mem_entry in enumerate(self._episodic_memory):
+                        if mem_entry['question'] == q_data['question']:
+                            self._episodic_memory[i]['correct_reasoning_chain'] = reasoning_chain
+                            break
+
         selected_examples = []
+
+        # Filter out any incorrect examples that still don't have a reasoning chain after processing
+        incorrect_examples = [ex for ex in incorrect_examples if ex[0].get('correct_reasoning_chain')]
 
         # Add up to 7 incorrect examples
         selected_examples.extend(incorrect_examples[:7])
@@ -244,6 +291,8 @@ keywords related to the question.",
         else:
             Logger().debug("No valid structural examples to include")
 
+        return usage_metrics
+
     def _rebuild_structural_index(self) -> None:
         """
         Rebuild the structural search index with current episodic memory entries.
@@ -258,8 +307,7 @@ keywords related to the question.",
 
         # Add all episodic memory entries to the index
         for i, memory_entry in enumerate(self._episodic_memory):
-            entry_data = memory_entry.get("id", {})
-            question = entry_data.get("question")
+            question = memory_entry.get("question")
 
             if question:
                 # Convert question to structural skeleton
@@ -267,7 +315,7 @@ keywords related to the question.",
                     question)
 
                 # Add to index
-                self._structural_search.questions.append(entry_data)
+                self._structural_search.questions.append(memory_entry)
                 self._structural_search.skeletons.append(skeleton)
                 self._structural_search.skeleton_to_questions[skeleton].append(
                     i)
@@ -314,7 +362,6 @@ Question: "{question}"
             formatted_examples.append(example)
 
         return "\n\n".join(formatted_examples)
-
 
     def _extract_reasoning_chain_from_messages(self, messages: List[Dict[str, str]]) -> Optional[str]:
         """
@@ -398,7 +445,7 @@ Question: "{question}"
     def _post_reasoning(self,
                         question: str,
                         final_answer: str,
-                        messages: List[Dict[str, str]]) -> Optional[Dict[str, int]]:
+                        messages: List[Dict[str, str]]) -> None:
         """
         Post-process the final answer after reasoning and update episodic memory.
 
@@ -409,7 +456,7 @@ Question: "{question}"
         question_obj = self._questions_map.get(question)
         if not question_obj:
             Logger().warning(f"Question object not found for: {question}")
-            return None
+            return
 
         r1, _, _ = rouge_score(question_obj['answer'], final_answer)[0]
         is_correct = r1 >= 0.65  # Threshold for correctness
@@ -417,53 +464,28 @@ Question: "{question}"
         Logger().info(
             f"Question '{question}' - ROUGE-1: {r1:.3f} - {'CORRECT' if is_correct else 'INCORRECT'}")
 
-        usage_metrics = None
         correct_reasoning_chain = None
 
-        if not is_correct:
-            # get ground truth supporting documents
-            evidence = get_complete_evidence(question_obj, self._corpus, self._args.dataset)
-
-            # Get corrected reasoning chain for incorrect answers
-            post_reflection_result = post_reflector(
-                self._args,
-                question,
-                question_obj['answer'][0],
-                [doc['content'] for doc in evidence],
-                question_obj.get('decomposition', [])
-            )
-
-            if post_reflection_result:
-                correct_reasoning_chain, usage_metrics = post_reflection_result
-        else:
-            # For correct answers, extract reasoning chain from messages
+        if is_correct:
             correct_reasoning_chain = self._extract_reasoning_chain_from_messages(
                 messages)
 
-        # Only add to episodic memory if we have a valid reasoning chain
-        if correct_reasoning_chain:
-            episodic_entry = {
-                "id": {
-                    "question": question,
-                    "ground_truth": question_obj['answer'][0],
-                    "final_answer": final_answer,
-                    "messages": messages,
-                    "correct_reasoning_chain": correct_reasoning_chain,
-                    "is_correct": is_correct,
-                    "rouge_score": r1
-                }
-            }
+        # Delay computing correct_reasoning_chain until needed for incorrect examples
+        episodic_entry = {
+            "question": question,
+            "ground_truth": question_obj['answer'][0],
+            "final_answer": final_answer,
+            "messages": messages,
+            "correct_reasoning_chain": correct_reasoning_chain,
+            "is_correct": is_correct,
+            "rouge_score": r1
+        }
 
-            self._episodic_memory.append(episodic_entry)
+        self._episodic_memory.append(episodic_entry)
 
-            Logger().debug(
-                f"Updated episodic memory with new {'correct' if is_correct else 'incorrect'} entry. "
-                f"Total entries: {len(self._episodic_memory)}")
-        else:
-            Logger().debug(
-                f"Skipping episodic memory update - no valid reasoning chain for question: {question}")
-
-        return usage_metrics
+        Logger().debug(
+            f"Updated episodic memory with new {'correct' if is_correct else 'incorrect'} entry. "
+            f"Total entries: {len(self._episodic_memory)}")
 
 
 # Default job arguments
