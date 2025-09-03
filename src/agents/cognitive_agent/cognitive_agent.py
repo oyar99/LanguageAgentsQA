@@ -16,6 +16,7 @@ from models.dataset import Dataset
 from models.structural_search import StructuralSearchEngine
 from plugins.post_reflector import post_reflector
 import utils.agent_worker as worker
+from utils.dataset_utils import get_complete_evidence
 from utils.structure_response import parse_structured_response
 
 # pylint: disable-next=too-many-instance-attributes
@@ -420,11 +421,15 @@ Question: "{question}"
         correct_reasoning_chain = None
 
         if not is_correct:
+            # get ground truth supporting documents
+            evidence = get_complete_evidence(question_obj, self._corpus, self._args.dataset)
+
             # Get corrected reasoning chain for incorrect answers
             post_reflection_result = post_reflector(
+                self._args,
                 question,
                 question_obj['answer'][0],
-                [doc['content'] for doc in question_obj['docs']],
+                [doc['content'] for doc in evidence],
                 question_obj.get('decomposition', [])
             )
 

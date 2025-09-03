@@ -280,7 +280,7 @@ class MultiprocessingStatefulSearchAgent(Agent, ABC):
     two resources to the worker processes: a lock and a searcher accesible via the utils.agent_worker module.
     """
 
-    def __init__(self, args, cores=2):
+    def __init__(self, args, cores):
         super().__init__(args)
         self._cores = cores
 
@@ -301,10 +301,12 @@ class MultiprocessingStatefulSearchAgent(Agent, ABC):
         # Divide questions into groups based on number of cores
         question_groups = self._divide_questions_into_groups(questions)
 
+        cores = 4 if not self._cores else self._cores
+
         # Create worker processes for each group
         results = []
         with Pool(
-            min(self._cores, len(question_groups)),
+            min(cores, len(question_groups)),
             init_agent_worker,
             [MainProcessLogger().get_queue(), l]
         ) as pool:
@@ -392,7 +394,7 @@ class SelfContainedAgent(Agent, ABC):
     """
 
     def __init__(self, args):
-        super().__init__(args)
+        Agent.__init__(self, args)
         self.standalone = True
 
 
@@ -406,7 +408,7 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
     """
 
     def __init__(self, actions: Dict[str, Action], examples: str, args):
-        super().__init__(args)
+        SelfContainedAgent.__init__(self, args)
         self._max_iteratios = 8
         self._enable_reflection = False
         self._enable_interleave_reflection = False
@@ -901,7 +903,7 @@ class StatefulIntelligentAgent(BaseIntelligentAgent, MultiprocessingStatefulSear
     A class representing a stateful intelligent agent that maintains state across multiple reasoning sessions.
     """
 
-    def __init__(self, actions: Dict[str, Action], examples: str, args, cores=4):
+    def __init__(self, actions: Dict[str, Action], examples: str, args, cores):
         MultiprocessingStatefulSearchAgent.__init__(self, args, cores)
         BaseIntelligentAgent.__init__(self, actions, examples, args)
 

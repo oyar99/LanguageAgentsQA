@@ -2,6 +2,7 @@
 This module provides functionality to analyze why an answer is incorrect by comparing
 it to expected answers and evidence.
 """
+import argparse
 from typing import Dict, List, Optional, Tuple
 
 from azure_open_ai.chat_completions import chat_completions
@@ -10,6 +11,7 @@ from logger.logger import Logger
 
 # pylint: disable-next=too-many-locals
 def post_reflector(
+        args: argparse.Namespace,
         question: str,
         expected_answer: str,
         expected_evidences: List[str],
@@ -19,6 +21,7 @@ def post_reflector(
     Analyze why an answer is incorrect by comparing it to the expected answer and evidence.
 
     Args:
+        args (Namespace): The program command line arguments
         question (str): The question being answered.
         expected_answer (str): The correct/expected answer.
         expected_evidences (List[str]): List of expected supporting evidence.
@@ -59,10 +62,11 @@ def post_reflector(
 No Escape >> cast member → Valerie Hobson
 #1 >> spouse → John Profumo
 """
-
-    prompt = POST_REFLECTOR_PROMPT_BASE.format(
+    few_shot_examples = MULTIHOP_QA_EXAMPLES.format(
         reasoning_example=reasoning_sample
-    ) if decomposition_text else POST_REFLECTOR_PROMPT_BASE.format(reasoning_example="")
+    ) if args.dataset != 'locomo' else CONVERSATIONAL_QA_EXAMPLES
+
+    prompt = POST_REFLECTOR_PROMPT_BASE + "\n\n" + few_shot_examples
 
     open_ai_request = {
         "custom_id": "post_reflection_analysis",
@@ -169,10 +173,49 @@ Each iteration must strictly adhere to the following rules:
 - Each intermediate iteration follows the exact same thought+actions, followed by another iteration with observations added
 
 An iteration is either a thought/action pair, a thought/action/observation triplet, or the final thought/final_answer pair.
-When provided, actions and observations must not be empty lists.
-Observations must be strings from the actual provided supporting evidence.
+When provided, actions and observations **must not** be empty lists.
+Observations must always be strings from the actual provided supporting evidence.
+'''
 
-### Example
+CONVERSATIONAL_QA_EXAMPLES = '''### Example
+
+Question: "What challenge did John encounter during pre-season training?"
+Expected Answer: "fitting into the new team's style of play"
+Supporting Evidence:
+- At around 7:48 pm on 21 May, 2023, during message 10, Tim said: Sounds good! What challenges have you encountered during your pre-season training?
+- At around 7:48 pm on 21 May, 2023, during message 11, John said: Fitting into the new team's style of play was a challenge during pre-season.
+
+Your response:
+
+**Iteration 1:**
+```json
+{
+    "thought": "I need to find out what challenges John faced during his pre-season training.",
+    "actions": ["search('John pre-season training challenges')"]
+}
+```
+
+**Iteration 2:**
+```json
+{
+    "thought": "I need to find out what challenges John faced during his pre-season training.",
+    "actions": ["search('John pre-season training challenges')"],
+    "observations": [["At around 7:48 pm on 21 May, 2023, during message 10, Tim said: Sounds good! What challenges have you encountered during your \
+pre-season training?", "At around 7:48 pm on 21 May, 2023, during message 11, John said: Fitting into the new team's style of play was a challenge \
+during pre-season."]]
+}
+```
+
+**Iteration 3:**
+```json
+{
+    "thought": "The evidence shows that John mentioned 'fitting into the new team's style of play' as a challenge during his pre-season training.",
+    "final_answer": "fitting into the new team's style of play"
+}
+```
+'''
+
+MULTIHOP_QA_EXAMPLES = '''### Example
 
 Question: "Who was married to the star of No Escape?"
 Expected Answer: "John Profumo"

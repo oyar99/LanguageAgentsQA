@@ -3,21 +3,24 @@
 QA System Analysis Tool
 
 This script analyzes QA system performance with ROUGE-1 score evaluation and generates
-learning progression visualizations. It supports both two-agent analysis (split at 
-question 1208) and whole system analysis modes. The modular design allows for easy
-extension to support additional analysis metrics.
+learning progression visualizations. It supports both two-agent analysis (split at
+JSONL file midpoint) and whole system analysis modes. The modular design allows 
+for easy extension to support additional analysis metrics.
 
 Usage:
-    python -m analysis.analyzer <jsonl_file_path> [mode]
+    python -m analysis.analyzer <jsonl_file_path> <dataset_name> [mode] [limit]
     
 Arguments:
     jsonl_file_path: Path to the JSONL file containing QA results
+    dataset_name: Name of the dataset ('musique', 'locomo', 'hotpot', 'twowikimultihopqa')
     mode: Analysis mode - 'whole' (default) or '2-agent'
+    limit: Optional limit on number of scores to process (processes all if not specified)
 
 Examples:
-    python -m analysis.analyzer /path/to/results.jsonl
-    python -m analysis.analyzer /path/to/results.jsonl whole
-    python -m analysis.analyzer /path/to/results.jsonl 2-agent
+    python -m analysis.analyzer /path/to/results.jsonl musique
+    python -m analysis.analyzer /path/to/results.jsonl locomo whole
+    python -m analysis.analyzer /path/to/results.jsonl musique 2-agent
+    python -m analysis.analyzer /path/to/results.jsonl locomo 2-agent 100
 """
 
 import json
@@ -32,6 +35,9 @@ import numpy as np
 from logger.logger import Logger, MainProcessLogger
 from models.question_answer import QuestionAnswer
 from data.musique.musique import MuSiQue
+from data.locomo.locomo import Locomo
+from data.hotpot.hotpot import Hotpot
+from data.twowikimultihopqa.two_wiki import TwoWiki
 from evaluator.rogue_evaluator import rouge_score
 
 
@@ -47,16 +53,16 @@ def calculate_rouge1_score(expected_answers, actual_answer):
         tuple: (f1_score, precision, recall)
     """
     scores = rouge_score(expected_answers, actual_answer)
-    # Return only ROUGE-1 scores (first element)
+    # Return only ROUGE-1 scores
     return scores[0]
 
 
-def load_dataset(dataset_class=MuSiQue) -> Dict[str, QuestionAnswer]:
+def load_dataset(dataset_name: str = "musique") -> Dict[str, QuestionAnswer]:
     """
     Load dataset using the project's existing Dataset classes.
 
     Args:
-        dataset_class: The dataset class to use (defaults to MuSiQue)
+        dataset_name: Name of the dataset to load ('musique', 'locomo', 'hotpot', 'twowiki')
 
     Returns:
         Dictionary mapping question IDs to QuestionAnswer objects
@@ -74,6 +80,20 @@ def load_dataset(dataset_class=MuSiQue) -> Dict[str, QuestionAnswer]:
             self.limit = None  # No limit
             self.model = None  # Required for prompt selection
 
+    # Map dataset names to classes
+    dataset_classes = {
+        'musique': MuSiQue,
+        'locomo': Locomo,
+        'hotpot': Hotpot,
+        'twowiki': TwoWiki
+    }
+
+    if dataset_name.lower() not in dataset_classes:
+        raise ValueError(f"Unsupported dataset: {dataset_name}. "
+                         f"Supported datasets: {list(dataset_classes.keys())}")
+
+    dataset_class = dataset_classes[dataset_name.lower()]
+
     # Use the existing Dataset class
     args = MockArgs()
     dataset = dataset_class(args)
@@ -81,9 +101,9 @@ def load_dataset(dataset_class=MuSiQue) -> Dict[str, QuestionAnswer]:
 
     result = {}
     for sample in samples:
-        qa = sample['sample']['qa'][0] if sample['sample']['qa'] else None
-        if qa:
-            result[qa['question_id']] = qa
+        for qa in sample['sample']['qa']:
+            if qa:
+                result[qa['question_id']] = qa
 
     Logger().info(
         f"Loaded {len(result)} questions from {dataset.name} dataset")
@@ -277,20 +297,21 @@ def create_learning_progression_plot(scores, save_path="rouge1_learning_progress
                                      score_type="ROUGE-1"):
     """
     Create a comprehensive learning progression plot with separate curves for two agents.
-    Agent 1: Questions 1-1208
-    Agent 2: Questions 1209 onwards
+    Split point is calculated based on the actual JSONL file length (midpoint).
 
     Args:
         scores (list): List of scores in chronological order
         save_path (str): Path to save the plot image
         score_type (str): Type of score for labeling
+        dataset_name (str): Name of the dataset for labeling purposes
     """
     if not scores:
         Logger().info("No scores to plot.")
         return
 
-    # Split scores into two agents
-    agent1_split = 1208  # First agent handles questions 1-1208
+    # Calculate split point based on actual JSONL length, not dataset size
+    # This allows for subset testing while maintaining proper agent split
+    agent1_split = len(scores) // 2
 
     if len(scores) > agent1_split:
         agent1_scores = scores[:agent1_split]
@@ -575,40 +596,19 @@ def print_results(scores, stats, score_type="ROUGE-1"):
             f"Last 5 scores: {[f'{score:.6f}' for score in scores[-5:]]}")
 
 
-def extract_scores_from_file(file_path: str) -> List[float]:
-    """
-    Extract ROUGE-1 scores from a log file.
-
-    Args:
-        file_path (str): Path to the log file
-
-    Returns:
-        List[float]: List of extracted ROUGE-1 scores
-    """
-    scores = []
-    rouge_pattern = re.compile(r"ROUGE-1:\s*([\d.]+)")
-
-    with open(file_path, 'r', encoding='utf-8') as file:
-        for line in file:
-            match = rouge_pattern.search(line)
-            if match:
-                score = float(match.group(1))
-                scores.append(score)
-
-    return scores
-
-
-def process_jsonl_file(file_path: str) -> List[float]:
+def process_jsonl_file(file_path: str, dataset_name: str, limit: int = None) -> List[float]:
     """Process JSONL file and calculate ROUGE-1 scores against dataset.
 
     Args:
         file_path: Path to the JSONL file
+        dataset_name: Name of the dataset to load
+        limit: Optional maximum number of scores to process
 
     Returns:
         List of ROUGE-1 scores
     """
     # Load dataset
-    dataset_qa = load_dataset()
+    dataset_qa = load_dataset(dataset_name)
     if not dataset_qa:
         Logger().error("Error: Could not load dataset")
         return []
@@ -620,6 +620,10 @@ def process_jsonl_file(file_path: str) -> List[float]:
 
     with open(file_path, 'r', encoding='utf-8') as f:
         for line_num, line in enumerate(f, 1):
+            # Stop processing if we've reached the limit
+            if limit is not None and len(rouge1_scores) >= limit:
+                break
+                
             data = json.loads(line.strip())
             processed_count += 1
 
@@ -658,52 +662,98 @@ def process_jsonl_file(file_path: str) -> List[float]:
     Logger().info(f"Matched {matched_count} entries with dataset")
     Logger().info(
         f"Calculated ROUGE-1 scores for {len(rouge1_scores)} questions")
+    
+    if limit is not None:
+        Logger().info(f"Limited to {limit} scores as requested")
 
     return rouge1_scores
 
 
 def parse_arguments():
     """
-    Parse and validate command line arguments.
+    Parse command line arguments for file path, dataset name, analysis mode, and optional limit.
 
     Returns:
-        tuple: (filename, mode) where mode is either 'whole' or '2-agent'
+        tuple: (filename, dataset_name, mode, limit) where mode is either 'whole' or '2-agent'
+               and limit is an optional integer or None
     """
     # Check command line arguments
-    if len(sys.argv) < 2:
-        print("Usage: python -m analysis.analyzer <file_path> [mode]")
-        print("  file_path: Path to the JSONL file or log file to analyze")
-        print("  mode: 'whole' (default) or '2-agent' (split at question 1208)")
+    if len(sys.argv) < 3:
+        print(
+            "Usage: python -m analysis.analyzer <file_path> <dataset_name> [mode] [limit]")
+        print("  file_path: Path to the JSONL file to analyze")
+        print(
+            "  dataset_name: Name of the dataset ('musique', 'locomo', 'hotpot', 'twowiki')")
+        print("  mode: 'whole' (default) or '2-agent' (split at JSONL file midpoint)")
+        print("  limit: Optional maximum number of scores to process")
         print("  Examples:")
-        print("    python -m analysis.analyzer output/qa_jobs/qa_results.jsonl")
-        print("    python -m analysis.analyzer output/qa_jobs/qa_results.jsonl 2-agent")
-        print("    python -m analysis.analyzer logs/rouge_scores.txt whole")
+        print("    python -m analysis.analyzer output/qa_jobs/qa_results.jsonl musique")
+        print(
+            "    python -m analysis.analyzer output/qa_jobs/qa_results.jsonl locomo 2-agent")
+        print(
+            "    python -m analysis.analyzer output/qa_jobs/qa_results.jsonl musique 2-agent 100")
         sys.exit(1)
 
     filename = sys.argv[1]
+    dataset_name = sys.argv[2]
+
+    # Validate dataset name
+    valid_datasets = ['musique', 'locomo', 'hotpot', 'twowiki']
+    if dataset_name.lower() not in valid_datasets:
+        print(f"Error: Invalid dataset name '{dataset_name}'. "
+              f"Valid options: {', '.join(valid_datasets)}")
+        sys.exit(1)
 
     # Parse mode argument (default to "whole")
     mode = "whole"
-    if len(sys.argv) >= 3:
-        mode_arg = sys.argv[2].lower()
+    if len(sys.argv) >= 4:
+        mode_arg = sys.argv[3].lower()
         if mode_arg in ["2-agent", "2agent", "two-agent", "agent"]:
             mode = "2-agent"
         elif mode_arg in ["whole", "system", "single"]:
             mode = "whole"
         else:
-            print(
-                f"Warning: Unknown mode '{sys.argv[2]}'. Using 'whole' mode.")
-            mode = "whole"
+            # Try to parse as a number (limit argument without mode)
+            try:
+                limit = int(sys.argv[3])
+                return filename, dataset_name, mode, limit
+            except ValueError:
+                print(
+                    f"Warning: Unknown mode '{sys.argv[3]}'. Using 'whole' mode.")
+                mode = "whole"
 
-    return filename, mode
+    # Parse limit argument (optional)
+    limit = None
+    if len(sys.argv) >= 5:
+        try:
+            limit = int(sys.argv[4])
+            if limit <= 0:
+                print("Error: Limit must be a positive integer.")
+                sys.exit(1)
+        except ValueError:
+            print("Error: Limit must be a valid integer.")
+            sys.exit(1)
+    elif len(sys.argv) == 4 and mode == "whole":
+        # Check if the 4th argument is actually a limit
+        try:
+            limit = int(sys.argv[3])
+            if limit <= 0:
+                print("Error: Limit must be a positive integer.")
+                sys.exit(1)
+        except ValueError:
+            pass  # It's actually the mode argument
+
+    return filename, dataset_name, mode, limit
 
 
-def process_file_and_get_scores(filename):
+def process_file_and_get_scores(filename, dataset_name, limit=None):
     """
-    Process the input file and extract ROUGE-1 scores.
+    Process the JSONL file and extract ROUGE-1 scores.
 
     Args:
-        filename: Path to the file to process
+        filename: Path to the JSONL file to process
+        dataset_name: Name of the dataset to use
+        limit: Optional maximum number of scores to process
 
     Returns:
         tuple: (scores_list, score_type) or (None, None) if processing fails
@@ -714,17 +764,16 @@ def process_file_and_get_scores(filename):
         print("Please check the file path and try again.")
         return None, None
 
-    # Determine file type and process accordingly
-    if filename.endswith('.jsonl'):
-        Logger().info(f"Processing JSONL file: {filename}")
-        Logger().info("Calculating ROUGE-1 scores against dataset...")
-        scores = process_jsonl_file(filename)
-        score_type = "ROUGE-1"
-    else:
-        Logger().info(f"Processing log file: {filename}")
-        Logger().info("Extracting ROUGE-1 scores from log file...")
-        scores = extract_scores_from_file(filename)
-        score_type = "ROUGE-1"
+    # Only process JSONL files
+    if not filename.endswith('.jsonl'):
+        print(f"Error: Only JSONL files are supported. Got: {filename}")
+        print("Please provide a JSONL file path.")
+        return None, None
+
+    Logger().info(f"Processing JSONL file: {filename}")
+    Logger().info("Calculating ROUGE-1 scores against dataset...")
+    scores = process_jsonl_file(filename, dataset_name, limit)
+    score_type = "ROUGE-1"
 
     if not scores:
         Logger().warn(f"No {score_type} scores found.")
@@ -740,52 +789,67 @@ def perform_agent_analysis(scores, mode):
     Args:
         scores: List of ROUGE-1 scores
         mode: Analysis mode ('2-agent' or 'whole')
+        dataset_name: Name of the dataset (used for labeling)
     """
     # Agent-specific analysis only for 2-agent mode
-    if mode == "2-agent" and len(scores) > 1208:
-        Logger().info("\n" + "=" * 60)
-        Logger().info("AGENT-SPECIFIC LEARNING ANALYSIS")
-        Logger().info("=" * 60)
+    if mode == "2-agent":
+        agent1_split = len(scores) // 2
 
-        agent1_scores = scores[:1208]
-        agent2_scores = scores[1208:]
+        if len(scores) > agent1_split:
+            Logger().info("\n" + "=" * 60)
+            Logger().info("AGENT-SPECIFIC LEARNING ANALYSIS")
+            Logger().info("=" * 60)
 
-        Logger().info("Agent 1 Learning Analysis:")
-        agent1_metrics = analyze_learning_metrics(agent1_scores)
-        if 'error' not in agent1_metrics:
-            Logger().info(f"  Early avg: {agent1_metrics['early_avg']:.6f}")
-            Logger().info(f"  Late avg: {agent1_metrics['late_avg']:.6f}")
-            Logger().info(
-                f"  Improvement: {agent1_metrics['improvement']:+.6f} "
-                f"({agent1_metrics['improvement_percent']:+.2f}%)")
-            Logger().info(
-                f"  Learning detected: "
-                f"{'Yes' if agent1_metrics['learning_detected'] else 'No'}")
+            agent1_scores = scores[:agent1_split]
+            agent2_scores = scores[agent1_split:]
 
-        Logger().info("\nAgent 2 Learning Analysis:")
-        agent2_metrics = analyze_learning_metrics(agent2_scores)
-        if 'error' not in agent2_metrics:
-            Logger().info(f"  Early avg: {agent2_metrics['early_avg']:.6f}")
-            Logger().info(f"  Late avg: {agent2_metrics['late_avg']:.6f}")
             Logger().info(
-                f"  Improvement: {agent2_metrics['improvement']:+.6f} "
-                f"({agent2_metrics['improvement_percent']:+.2f}%)")
+                f"Agent 1 Learning Analysis (Questions 1-{agent1_split}):")
+            agent1_metrics = analyze_learning_metrics(agent1_scores)
+            if 'error' not in agent1_metrics:
+                Logger().info(
+                    f"  Early avg: {agent1_metrics['early_avg']:.6f}")
+                Logger().info(f"  Late avg: {agent1_metrics['late_avg']:.6f}")
+                Logger().info(
+                    f"  Improvement: {agent1_metrics['improvement']:+.6f} "
+                    f"({agent1_metrics['improvement_percent']:+.2f}%)")
+                Logger().info(
+                    f"  Learning detected: "
+                    f"{'Yes' if agent1_metrics['learning_detected'] else 'No'}")
+
             Logger().info(
-                f"  Learning detected: "
-                f"{'Yes' if agent2_metrics['learning_detected'] else 'No'}")
+                f"\nAgent 2 Learning Analysis (Questions {agent1_split + 1}-{len(scores)}):")
+            agent2_metrics = analyze_learning_metrics(agent2_scores)
+            if 'error' not in agent2_metrics:
+                Logger().info(
+                    f"  Early avg: {agent2_metrics['early_avg']:.6f}")
+                Logger().info(f"  Late avg: {agent2_metrics['late_avg']:.6f}")
+                Logger().info(
+                    f"  Improvement: {agent2_metrics['improvement']:+.6f} "
+                    f"({agent2_metrics['improvement_percent']:+.2f}%)")
+                Logger().info(
+                    f"  Learning detected: "
+                    f"{'Yes' if agent2_metrics['learning_detected'] else 'No'}")
+        else:
+            Logger().info(f"\nNote: Dataset has only {len(scores)} questions, "
+                          f"which is less than the calculated split point ({agent1_split}). "
+                          f"Using whole dataset analysis only.")
 
 
 def main():
     """
     Main function to process command line arguments and run ROUGE-1 analysis.
 
-    Parses command line arguments for file path and analysis mode,
+    Parses command line arguments for file path, dataset name, analysis mode, and optional limit,
     then processes the specified file and generates analysis results.
     """
-    filename, mode = parse_arguments()
+    filename, dataset_name, mode, limit = parse_arguments()
+    Logger().info(f"Dataset: {dataset_name}")
     Logger().info(f"Analysis mode: {mode}")
+    if limit is not None:
+        Logger().info(f"Processing limit: {limit}")
 
-    scores, score_type = process_file_and_get_scores(filename)
+    scores, score_type = process_file_and_get_scores(filename, dataset_name, limit)
     if scores is None:
         return
 
@@ -804,10 +868,11 @@ def main():
     mode_suffix = "2agent" if mode == "2-agent" else "whole"
     plot_filename = os.path.join(output_dir,
                                  f"{score_type.lower().replace('-', '_')}_learning_progression_"
-                                 f"{mode_suffix}_{timestamp}.eps")
+                                 f"{dataset_name}_{mode_suffix}_{timestamp}.eps")
 
     if mode == "2-agent":
-        create_learning_progression_plot(scores, plot_filename, score_type)
+        create_learning_progression_plot(
+            scores, plot_filename, score_type)
     else:
         # For whole system, create a simpler single-system plot
         create_whole_system_plot(scores, plot_filename, score_type)
