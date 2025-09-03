@@ -26,7 +26,6 @@ Examples:
 import json
 import statistics
 import os
-import re
 import sys
 from typing import Dict, List
 from datetime import datetime
@@ -184,6 +183,8 @@ def analyze_learning_metrics(scores):  # pylint: disable=too-many-locals
     }
 
 # pylint: disable-next=too-many-locals,too-many-statements
+
+
 def create_whole_system_plot(scores, save_path="rouge1_whole_system.eps",
                              score_type="ROUGE-1"):
     """
@@ -623,7 +624,7 @@ def process_jsonl_file(file_path: str, dataset_name: str, limit: int = None) -> 
             # Stop processing if we've reached the limit
             if limit is not None and len(rouge1_scores) >= limit:
                 break
-                
+
             data = json.loads(line.strip())
             processed_count += 1
 
@@ -662,7 +663,7 @@ def process_jsonl_file(file_path: str, dataset_name: str, limit: int = None) -> 
     Logger().info(f"Matched {matched_count} entries with dataset")
     Logger().info(
         f"Calculated ROUGE-1 scores for {len(rouge1_scores)} questions")
-    
+
     if limit is not None:
         Logger().info(f"Limited to {limit} scores as requested")
 
@@ -849,7 +850,8 @@ def main():
     if limit is not None:
         Logger().info(f"Processing limit: {limit}")
 
-    scores, score_type = process_file_and_get_scores(filename, dataset_name, limit)
+    scores, score_type = process_file_and_get_scores(
+        filename, dataset_name, limit)
     if scores is None:
         return
 
