@@ -179,7 +179,7 @@ keywords related to the question.",
 
         return notebook
 
-    # pylint: disable-next=too-many-locals
+    # pylint: disable-next=too-many-locals, too-many-branches
     def _pre_reasoning(self, question: str) -> Dict[str, int] | None:
         """
         Pre-process the question before reasoning by finding structurally similar questions
@@ -221,51 +221,54 @@ keywords related to the question.",
         usage_metrics = None
 
         # For the incorrect examples, we implement lazy loading of reasoning chains
-        # Meaning we only compute the reasoning chains until we need them here so
-        # we need to check if they are already present, if not we compute them
-        for i, (q_data, skeleton, score) in enumerate(incorrect_examples):
+        # Only compute reasoning chains for the examples we'll actually use (up to 7)
+        processed_incorrect_examples = []
+        i = 0
+
+        # pylint: disable-next=too-many-nested-blocks
+        while len(processed_incorrect_examples) < 7 and i < len(incorrect_examples):
+            q_data, skeleton, score = incorrect_examples[i]
+
             if 'correct_reasoning_chain' in q_data and q_data['correct_reasoning_chain']:
                 Logger().debug(
-                    f"Skipping reasoning chain extraction for question: {q_data['question']} - already present")
-                continue
+                    f"Using existing reasoning chain for question: {q_data['question']}")
+                processed_incorrect_examples.append((q_data, skeleton, score))
+            else:
+                question_obj = self._questions_map.get(q_data['question'])
 
-            question_obj = self._questions_map.get(q_data['question'])
+                # get ground truth supporting documents
+                evidence = get_complete_evidence(
+                    question_obj, self._corpus, self._args.dataset)
 
-            # get ground truth supporting documents
-            evidence = get_complete_evidence(
-                question_obj, self._corpus, self._args.dataset)
+                post_reflection_result = post_reflector(
+                    self._args,
+                    q_data['question'],
+                    q_data['ground_truth'],
+                    [doc['content'] for doc in evidence],
+                    question_obj.get('decomposition', [])
+                )
 
-            post_reflection_result = post_reflector(
-                self._args,
-                q_data['question'],
-                q_data['ground_truth'],
-                [doc['content'] for doc in evidence],
-                question_obj.get('decomposition', [])
-            )
+                if post_reflection_result:
+                    reasoning_chain, usage_metrics = post_reflection_result
 
-            if post_reflection_result:
-                reasoning_chain, usage_metrics = post_reflection_result
+                    if reasoning_chain:
+                        updated_q_data = {
+                            **q_data, 'correct_reasoning_chain': reasoning_chain}
+                        processed_incorrect_examples.append(
+                            (updated_q_data, skeleton, score))
 
-                if reasoning_chain:
-                    incorrect_examples[i] = (
-                        {**q_data, 'correct_reasoning_chain': reasoning_chain},
-                        skeleton,
-                        score
-                    )
+                        # Update the episodic memory entry as well
+                        for mem_idx, mem_entry in enumerate(self._episodic_memory):
+                            if mem_entry['question'] == q_data['question']:
+                                self._episodic_memory[mem_idx]['correct_reasoning_chain'] = reasoning_chain
+                                break
 
-                    # Update the episodic memory entry as well
-                    for i, mem_entry in enumerate(self._episodic_memory):
-                        if mem_entry['question'] == q_data['question']:
-                            self._episodic_memory[i]['correct_reasoning_chain'] = reasoning_chain
-                            break
+            i += 1
 
         selected_examples = []
 
-        # Filter out any incorrect examples that still don't have a reasoning chain after processing
-        incorrect_examples = [ex for ex in incorrect_examples if ex[0].get('correct_reasoning_chain')]
-
-        # Add up to 7 incorrect examples
-        selected_examples.extend(incorrect_examples[:7])
+        # Add the processed incorrect examples (up to 7)
+        selected_examples.extend(processed_incorrect_examples)
 
         # Add 1 correct example if available
         if correct_examples:
