@@ -14,10 +14,10 @@ from integration_tests.mocks.multiprocessing_mocks import MockPool
 from integration_tests.mocks.openai_mocks import MockOpenAIClient
 from integration_tests.mocks.file_mocks import mock_open, mock_qa_output_path, mock_retrieval_output_path
 from integration_tests.mocks.colbert_mocks import (
-    create_mock_indexer, 
-    create_mock_searcher, 
-    create_mock_run, 
-    create_mock_run_config, 
+    create_mock_indexer,
+    create_mock_searcher,
+    create_mock_run,
+    create_mock_run_config,
     create_mock_colbert_config
 )
 from integration_tests.mocks.worker_mocks import create_mock_worker
@@ -72,7 +72,7 @@ album Green. Now I need to find his spouse.",
 
         # Assert that worker.searcher.search was called with the expected query
         mock_worker.searcher.search.assert_called_with(
-            'Green album performer', 
+            'Green album performer',
             k=5
         )
 

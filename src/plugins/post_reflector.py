@@ -54,7 +54,7 @@ def post_reflector(
             decomposition_text = "Reasoning Steps:\n" + \
                 "\n".join(decomposition_steps) + "\n"
 
-    reasoning_sample = """Reasoning Steps: 
+    reasoning_sample = """Reasoning Steps:
 
 No Escape >> cast member → Valerie Hobson
 #1 >> spouse → John Profumo
