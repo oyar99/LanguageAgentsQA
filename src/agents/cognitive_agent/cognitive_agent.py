@@ -20,8 +20,6 @@ from utils.dataset_utils import get_complete_evidence
 from utils.structure_response import parse_structured_response
 
 # pylint: disable-next=too-many-instance-attributes
-
-
 class CognitiveAgent(StatefulIntelligentAgent):
     """
     ReactAgentCustom for reasoning over indexed documents using a custom instruction fine-tuned model
@@ -222,7 +220,7 @@ keywords related to the question.",
 
         usage_metrics = None
 
-        # For the incorrect examples, we implement eager loading of reasoning chains
+        # For the incorrect examples, we implement lazy loading of reasoning chains
         # Meaning we only compute the reasoning chains until we need them here so
         # we need to check if they are already present, if not we compute them
         for i, (q_data, skeleton, score) in enumerate(incorrect_examples):
