@@ -19,6 +19,7 @@ class MockSearcher:
 class MockRun:
     """Mock ColBERT Run context manager."""
 
+    # pylint: disable-next=unused-argument
     def context(self, config):
         """Mock context method that returns a context manager."""
         return MockRunContext()

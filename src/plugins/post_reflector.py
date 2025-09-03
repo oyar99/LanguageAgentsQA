@@ -8,6 +8,7 @@ from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
 
 
+# pylint: disable-next=too-many-locals
 def post_reflector(
         question: str,
         expected_answer: str,
@@ -53,7 +54,15 @@ def post_reflector(
             decomposition_text = "Reasoning Steps:\n" + \
                 "\n".join(decomposition_steps) + "\n"
 
-    prompt = POST_REFLECTOR_PROMPT_BASE
+    reasoning_sample = """Reasoning Steps: 
+
+No Escape >> cast member → Valerie Hobson
+#1 >> spouse → John Profumo
+"""
+
+    prompt = POST_REFLECTOR_PROMPT_BASE.format(
+        reasoning_example=reasoning_sample
+    ) if decomposition_text else POST_REFLECTOR_PROMPT_BASE.format(reasoning_example="")
 
     open_ai_request = {
         "custom_id": "post_reflection_analysis",
@@ -126,19 +135,19 @@ Generate a reasoning chain that strictly follows this format:
 
 **Iteration N:**
 ```json
-{
+{{
     "thought": "Clear reasoning about what information is needed",
     "actions": ["search('specific query')"]
-}
+}}
 ```
 
 **Iteration N+1:**
 ```json
-{
+{{
     "thought": "Clear reasoning about what information is needed",
     "actions": ["search('specific query')"],
     "observations": [["Retrieved document content that contains the needed information"]]
-}
+}}
 ```
 
 **Iteration N+2:**
@@ -146,10 +155,10 @@ Generate a reasoning chain that strictly follows this format:
 
 **Final Iteration:**
 ```json
-{
+{{
     "thought": "Clear reasoning showing how the evidence leads to the correct conclusion",
     "final_answer": "The correct answer"
-}
+}}
 ```
 
 Each iteration must strictly adhere to the following rules:
@@ -173,57 +182,54 @@ The screenplay concerns a man who attempts to hide his friend for a month.
 - Profumo was born in London, the son of former British government minister John Profumo and his wife, actress Valerie Hobson. The Profumo family is of \
 Italian origin. David Profumo would have succeeded his father as 6th Baron Profumo in the nobility of the Kingdom of Sardinia, if the nobility of Italy \
 had not been legally abolished after WW2. Like his father, he does not use this title.
-Reasoning Steps: 
-
-No Escape >> cast member → Valerie Hobson
-#1 >> spouse → John Profumo
+{reasoning_example}
 
 Your response:
 
 **Iteration 1:**
 ```json
-{
+{{
     "thought": "I need to find information about the film 'No Escape' and identify its star to determine who they were married to.",
     "actions": ["search('No Escape film')"]
-}
+}}
 ```
 
 **Iteration 2:**
 ```json
-{
+{{
     "thought": "I need to find information about the film 'No Escape' and identify its star to determine who they were married to.",
     "actions": ["search('No Escape film')"],
     "observations": [["No Escape (1936 film): No Escape is a 1936 British thriller film directed by Norman Lee and starring Valerie Hobson, \
 Leslie Perrins and Robert Cochran. The screenplay concerns a man who attempts to hide his friend for a month.", "Escape from L.A.: Escape from \
 L.A. (also known as John Carpenter's Escape from L.A. or Escape from Los Angeles) is a 1996 American postapocalyptic action film co-written, co-scored, and \
 directed by John Carpenter, co-written and produced by Debra Hill and Kurt Russell, with Russell also starring as Snake Plissken."]]
-}
+}}
 ```
 
 **Iteration 3:**
 ```json
-{
+{{
     "thought": "I can see two different films in the results. There's 'No Escape (1936 film)' starring Valerie Hobson, Leslie Perrins and Robert Cochran, and \
 'Escape from L.A.' starring Kurt Russell. The question asks about 'No Escape', so I should focus on the 1936 film. Valerie Hobson appears to be the main star. \
 Now I need to find who was married to Valerie Hobson.",
     "actions": ["search('Valerie Hobson husband')"]
-}
+}}
 ```
 
 **Iteration 4:**
 ```json
-{
+{{
     "thought": "I can see two different films in the results. There's 'No Escape (1936 film)' starring Valerie Hobson, Leslie Perrins and Robert Cochran, and 'Escape from L.A.' starring Kurt Russell. The question asks about 'No Escape', so I should focus on the 1936 film. Valerie Hobson appears to be the main star. Now I need to find who was married to Valerie Hobson.",
     "actions": ["search('Valerie Hobson husband')"],
     "observations": [["Profumo was born in London, the son of former British government minister John Profumo and his wife, actress Valerie Hobson. The Profumo family is of Italian origin. David Profumo would have succeeded his father as 6th Baron Profumo in the nobility of the Kingdom of Sardinia, if the nobility of Italy had not been legally abolished after WW2. Like his father, he does not use this title."]]
-}
+}}
 ```
 
 **Iteration 5:**
 ```json
-{
+{{
     "thought": "The evidence shows that Valerie Hobson was married to John Profumo. Since Valerie Hobson was the star of 'No Escape' (1936 film), the answer to who was married to the star of No Escape is John Profumo.",
     "final_answer": "John Profumo"
-}
+}}
 ```
 '''

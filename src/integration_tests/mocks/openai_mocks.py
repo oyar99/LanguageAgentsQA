@@ -4,10 +4,11 @@ from unittest.mock import MagicMock
 from typing import Any, Dict, List, Union
 from utils.singleton import Singleton
 
-
+# pylint: disable-next=too-few-public-methods
 class MockOpenAIResponse:
     """Mock OpenAI chat completion response."""
 
+    # pylint: disable-next=too-many-arguments, too-many-positional-arguments
     def __init__(self, content: Union[str, Dict[str, Any]],
                  role: str = "assistant",
                  finish_reason: str = "stop",

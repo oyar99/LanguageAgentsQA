@@ -2,6 +2,7 @@
 
 import json
 import os
+import random
 import re
 from typing import Optional
 
@@ -79,37 +80,48 @@ class Locomo(Dataset):
         file_path = os.path.join("data", "locomo", "locomo10.json")
 
         with open(file_path, "r", encoding="utf-8") as locomo_dataset:
-            dataset = [
-                DatasetSample(
-                    sample_id=cs['sample_id'],
-                    sample=DatasetSampleInstance(
-                        qa=filter_questions([QuestionAnswer(
-                            docs=[Document(
-                                doc_id=f'{ev}:{cs["sample_id"]}',
-                                folder_id=cs['sample_id'],
-                                content=format_content(
-                                    date=cs['conversation'][f'{session_id(ev)}_date_time'],
-                                    message=dia_idx(ev) + 1,
-                                    speaker=cs['conversation'][session_id(
-                                        ev)][dia_idx(ev)]['speaker'],
-                                    text=cs['conversation'][session_id(
-                                        ev)][dia_idx(ev)]['text'],
-                                    alt_text=cs['conversation'][session_id(ev)][dia_idx(ev)].get('blip_caption'))
-                            )
-                                for ev in qa['evidence']
-                                if session_id(ev) in cs['conversation'] and dia_idx(ev) <
-                                len(cs['conversation'][session_id(ev)])],
-                            question_id=f'{cs["sample_id"]}-{get_content_hash(qa["question"])}',
-                            question=qa['question'],
-                            answer=[str(qa.get('answer')) or str(qa.get(
-                                'adversarial_answer'))],
-                            category=QuestionCategory(qa['category'])
-                        ) for _, qa in enumerate(cs['qa'])], self._args.questions, self._args.category)
-                    )
-                )
-                for cs in json.load(locomo_dataset)
-                if conversation_id is None or cs['sample_id'] == conversation_id
-            ]
+            data = json.load(locomo_dataset)
+
+            if self._args.shuffle:
+                random.shuffle(data)
+                Logger().info("Questions shuffled randomly")
+
+            dataset = []
+            for cs in data:
+                if conversation_id is None or cs['sample_id'] == conversation_id:
+                    # Shuffle questions within each conversation if shuffle is enabled
+                    qa_list = cs['qa']
+                    if self._args.shuffle:
+                        qa_list = qa_list.copy()
+                        random.shuffle(qa_list)
+
+                    dataset.append(DatasetSample(
+                        sample_id=cs['sample_id'],
+                        sample=DatasetSampleInstance(
+                            qa=filter_questions([QuestionAnswer(
+                                docs=[Document(
+                                    doc_id=f'{ev}:{cs["sample_id"]}',
+                                    folder_id=cs['sample_id'],
+                                    content=format_content(
+                                        date=cs['conversation'][f'{session_id(ev)}_date_time'],
+                                        message=dia_idx(ev) + 1,
+                                        speaker=cs['conversation'][session_id(
+                                            ev)][dia_idx(ev)]['speaker'],
+                                        text=cs['conversation'][session_id(
+                                            ev)][dia_idx(ev)]['text'],
+                                        alt_text=cs['conversation'][session_id(ev)][dia_idx(ev)].get('blip_caption'))
+                                )
+                                    for ev in qa['evidence']
+                                    if session_id(ev) in cs['conversation'] and dia_idx(ev) <
+                                    len(cs['conversation'][session_id(ev)])],
+                                question_id=f'{cs["sample_id"]}-{get_content_hash(qa["question"])}',
+                                question=qa['question'],
+                                answer=[str(qa.get('answer')) or str(qa.get(
+                                    'adversarial_answer'))],
+                                category=QuestionCategory(qa['category'])
+                            ) for _, qa in enumerate(qa_list)], self._args.questions, self._args.category)
+                        )
+                    ))
             dataset = super().process_dataset(dataset)
 
             Logger().info(
@@ -145,7 +157,7 @@ class Locomo(Dataset):
                         alt_text=message.get('blip_caption'),
                     ),
                 )
-                for conversation_sample in corpus[:self._args.limit]
+                for conversation_sample in corpus # corpus[:self._args.limit]
                 if conversation_id is None or conversation_sample['sample_id'] == conversation_id
                 for key, session in conversation_sample['conversation'].items() if pattern.match(key)
                 for message in session
