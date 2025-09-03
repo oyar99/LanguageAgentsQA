@@ -67,15 +67,8 @@ album Green. Now I need to find his spouse.",
             k=5
         )
 
-        # Assert that openAI was called exactly twice (proper ReAct pattern)
-        self.assertEqual(MockOpenAIClient.get_call_count(), 2,
-                        "Expected exactly 2 OpenAI calls: first for thought+actions, second for thought+final_answer")
-
-        # Assert that output files were created
-        self._assert_output_files_exist()
-
-        # Assert that output files contain expected content
-        self._assert_output_files_content()
+        # Assert that openAI was called exactly twice
+        self.assertEqual(MockOpenAIClient.get_call_count(), 2)
 
         # Assert that output files were created
         self._assert_output_files_exist()
