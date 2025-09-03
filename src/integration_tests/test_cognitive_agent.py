@@ -13,7 +13,7 @@ from integration_tests.mocks.mock_args import create_agent_args
 from integration_tests.mocks.multiprocessing_mocks import MockPool
 from integration_tests.mocks.openai_mocks import MockOpenAIClient
 from integration_tests.mocks.file_mocks import mock_open, mock_qa_output_path, mock_retrieval_output_path
-from integration_tests.mocks.colbert_mocks import create_mock_indexer, create_mock_searcher
+from integration_tests.mocks.colbert_mocks import create_mock_indexer, create_mock_searcher, create_mock_run, create_mock_run_config, create_mock_colbert_config
 from integration_tests.mocks.worker_mocks import create_mock_worker
 from integration_tests.integration_test import IntegrationTest
 from orchestrator.orchestrator import Orchestrator
@@ -29,8 +29,11 @@ class TestCognitiveAgentIntegration(IntegrationTest):
     @patch('predictor.predictor.get_qa_output_path', side_effect=mock_qa_output_path)
     @patch('predictor.predictor.get_retrieval_output_path', side_effect=mock_retrieval_output_path)
     @patch('agents.cognitive_agent.cognitive_agent.worker', return_value=create_mock_worker())
-    @patch('colbert.Searcher', new=create_mock_searcher)
-    @patch('colbert.Indexer', new=create_mock_indexer)
+    @patch('agents.cognitive_agent.cognitive_agent.Run', new=create_mock_run)
+    @patch('agents.cognitive_agent.cognitive_agent.RunConfig', new=create_mock_run_config)
+    @patch('agents.cognitive_agent.cognitive_agent.ColBERTConfig', new=create_mock_colbert_config)
+    @patch('agents.cognitive_agent.cognitive_agent.Indexer', new=create_mock_indexer)
+    @patch('agents.cognitive_agent.cognitive_agent.Searcher', new=create_mock_searcher)
     @patch('azure_open_ai.openai_client.OpenAIClient.get_client', new=MockOpenAIClient)
     # pylint: disable-next=unused-argument
     def test_cognitive_agent(self, mock_worker, *rest):
