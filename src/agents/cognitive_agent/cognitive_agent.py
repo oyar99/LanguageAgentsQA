@@ -43,7 +43,7 @@ keywords related to the question.",
         }
         prompt_examples = PROMPT_EXAMPLE_TOOLS_LOCOMO if args.dataset == 'locomo' else PROMPT_EXAMPLES_TOOLS
 
-        # 4 agents that learn independently in parallel
+        # cores determines the number of agents to run in parallel
         super().__init__(actions, prompt_examples, args, cores=1)
         self._base_prompt = self._prompt
 
@@ -122,8 +122,7 @@ keywords related to the question.",
 
     def _init_searcher(self) -> None:
         """
-        Initializes the searcher for the ReactAgentCustom.
-        This is used to set up the searcher with the indexed documents.
+        Initializes the searcher.
         """
         if self._index is None or self._corpus is None:
             raise RuntimeError(
@@ -151,11 +150,11 @@ keywords related to the question.",
         # objects that can't be pickled, and hence need to be instantiated in each process.
         self._init_searcher()
 
-        # Pre-process the question before reasoning by extracting representative error samples
+        # Pre-process the question before reasoning by extracting representative samples
         # from episodic memory and updating the prompt with additional examples
         pre_reasoning_usage = self._pre_reasoning(question)
 
-        # Get the notebook from the parent reasoning process
+        # Run the ReAct reasoning process
         notebook = super().reason(question)
 
         # Extract information from the notebook for post-processing

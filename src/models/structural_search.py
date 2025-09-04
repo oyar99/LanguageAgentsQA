@@ -192,7 +192,7 @@ class StructuralSearchEngine:
 
         # Method 3: Edit distance for very similar structures
         edit_distance_results = []
-        # Check top 50 by cosine similarity
+        # Check top_k by cosine similarity
         for idx, cosine_score in similar_indices[:top_k]:
             edit_dist = self.compute_edit_distance(
                 query_skeleton, self.skeletons[idx])

@@ -970,7 +970,7 @@ Unless strictly necessary, you will answer with 'N/A' if you definitely cannot p
 
 REACT_AGENT_REFLECTION_PROMPT = '''You should reflect on your previous response and reasoning process \
 based on the provided feedback. Please correct any mistakes, improve your reasoning, 
-and provide the next intermidiate or final answer following the same response format as before.
+and provide the next intermediate or final answer following the same response format as before.
 '''
 
 REACT_AGENT_SELF_REFLECT_PROMPT = '''Based on the provided feedback, \
