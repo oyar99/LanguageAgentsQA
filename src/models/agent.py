@@ -409,7 +409,7 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
 
     def __init__(self, actions: Dict[str, Action], examples: str, args):
         SelfContainedAgent.__init__(self, args)
-        self._max_iteratios = 8
+        self._max_iterations = 8
         self._enable_reflection = False
         self._enable_interleave_reflection = False
 
@@ -699,7 +699,7 @@ including user inputs and system responses.
             iteration += 1
 
             # If this is the last iteration, we force the model to provide a final answer
-            if iteration == self._max_iteratios:
+            if iteration == self._max_iterations:
                 messages.append(
                     {"role": "system", "content": REACT_AGENT_LAST_ITERATION_PROMPT})
 
@@ -742,7 +742,7 @@ including user inputs and system responses.
 
             # If we reached max iterations and no final answer, force it to N/A
             # Do not execute any more actions to save cost
-            if iteration == self._max_iteratios and final_answer is None:
+            if iteration == self._max_iterations and final_answer is None:
                 Logger().warn(
                     f"Max iterations reached for question: {question} without a final answer.")
                 final_answer = "N/A"
@@ -782,7 +782,7 @@ including user inputs and system responses.
                     messages.append(
                         {"role": "system", "content":
                          REACT_AGENT_REFLECTION_PROMPT
-                         if iteration != self._max_iteratios else REACT_AGENT_LAST_ITERATION_PROMPT})
+                         if iteration != self._max_iterations else REACT_AGENT_LAST_ITERATION_PROMPT})
 
                     # Update turn with feedback
                     turn = self._turn_from_response_factory(
@@ -792,7 +792,7 @@ including user inputs and system responses.
                     final_answer = turn["final_answer"]
 
                     # If this was the last iteration, and we do not have a final answer, we force it to N/A
-                    if iteration == self._max_iteratios and final_answer is None:
+                    if iteration == self._max_iterations and final_answer is None:
                         Logger().warn(
                             f"Max iterations reached for question: {question} without a final answer.")
                         final_answer = "N/A"
