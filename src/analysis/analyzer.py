@@ -8,25 +8,19 @@ JSONL file midpoint) and whole system analysis modes. The modular design allows
 for easy extension to support additional analysis metrics.
 
 Usage:
-    python -m analysis.analyzer <jsonl_file_path> <dataset_name> [mode] [limit]
+    python -m analysis.analyzer -f <jsonl_file_path> -d <dataset_name> [options]
     
-Arguments:
-    jsonl_file_path: Path to the JSONL file containing QA results
-    dataset_name: Name of the dataset ('musique', 'locomo', 'hotpot', 'twowikimultihopqa')
-    mode: Analysis mode - 'whole' (default) or '2-agent'
-    limit: Optional limit on number of scores to process (processes all if not specified)
-
 Examples:
-    python -m analysis.analyzer /path/to/results.jsonl musique
-    python -m analysis.analyzer /path/to/results.jsonl locomo whole
-    python -m analysis.analyzer /path/to/results.jsonl musique 2-agent
-    python -m analysis.analyzer /path/to/results.jsonl locomo 2-agent 100
+    python -m analysis.analyzer -f /path/to/results.jsonl -d musique
+    python -m analysis.analyzer -f /path/to/results.jsonl -d locomo -m whole
+    python -m analysis.analyzer -f /path/to/results.jsonl -d musique -m 2-agent
+    python -m analysis.analyzer -f /path/to/results.jsonl -d locomo -m 2-agent -l 100
 """
 
+import argparse
 import json
 import statistics
 import os
-import sys
 from typing import Dict, List
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -668,81 +662,32 @@ def process_jsonl_file(file_path: str, dataset_name: str, limit: int = None) -> 
     return rouge1_scores
 
 
-def parse_arguments():
+def parse_args() -> argparse.Namespace:
     """
-    Parse command line arguments for file path, dataset name, analysis mode, and optional limit.
+    Parse command line arguments for QA system analysis.
 
     Returns:
-        tuple: (filename, dataset_name, mode, limit) where mode is either 'whole' or '2-agent'
-               and limit is an optional integer or None
+        argparse.Namespace: Parsed arguments containing file path, dataset name, mode, and limit
     """
-    # Check command line arguments
-    if len(sys.argv) < 3:
-        print(
-            "Usage: python -m analysis.analyzer <file_path> <dataset_name> [mode] [limit]")
-        print("  file_path: Path to the JSONL file to analyze")
-        print(
-            "  dataset_name: Name of the dataset ('musique', 'locomo', 'hotpot', 'twowiki')")
-        print("  mode: 'whole' (default) or '2-agent' (split at JSONL file midpoint)")
-        print("  limit: Optional maximum number of scores to process")
-        print("  Examples:")
-        print("    python -m analysis.analyzer output/qa_jobs/qa_results.jsonl musique")
-        print(
-            "    python -m analysis.analyzer output/qa_jobs/qa_results.jsonl locomo 2-agent")
-        print(
-            "    python -m analysis.analyzer output/qa_jobs/qa_results.jsonl musique 2-agent 100")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        prog='qa-analysis',
+        description='Analyze QA system performance with ROUGE-1 score evaluation and learning progression'
+    )
 
-    filename = sys.argv[1]
-    dataset_name = sys.argv[2]
+    parser.add_argument('-f', '--file', type=str, required=True,
+                        help='Path to the JSONL file containing QA results (required)')
 
-    # Validate dataset name
-    valid_datasets = ['musique', 'locomo', 'hotpot', 'twowiki']
-    if dataset_name.lower() not in valid_datasets:
-        print(f"Error: Invalid dataset name '{dataset_name}'. "
-              f"Valid options: {', '.join(valid_datasets)}")
-        sys.exit(1)
+    parser.add_argument('-d', '--dataset', choices=['musique', 'locomo', 'hotpot', 'twowiki'],
+                        required=True, help='Name of the dataset (required)')
 
-    # Parse mode argument (default to "whole")
-    mode = "whole"
-    if len(sys.argv) >= 4:
-        mode_arg = sys.argv[3].lower()
-        if mode_arg in ["2-agent", "2agent", "two-agent", "agent"]:
-            mode = "2-agent"
-        elif mode_arg in ["whole", "system", "single"]:
-            mode = "whole"
-        else:
-            # Try to parse as a number (limit argument without mode)
-            try:
-                limit = int(sys.argv[3])
-                return filename, dataset_name, mode, limit
-            except ValueError:
-                print(
-                    f"Warning: Unknown mode '{sys.argv[3]}'. Using 'whole' mode.")
-                mode = "whole"
+    parser.add_argument('-m', '--mode', choices=['whole', '2-agent'], default='whole',
+                        help='Analysis mode: "whole" for single system analysis or \
+"2-agent" for split analysis (default: whole)')
 
-    # Parse limit argument (optional)
-    limit = None
-    if len(sys.argv) >= 5:
-        try:
-            limit = int(sys.argv[4])
-            if limit <= 0:
-                print("Error: Limit must be a positive integer.")
-                sys.exit(1)
-        except ValueError:
-            print("Error: Limit must be a valid integer.")
-            sys.exit(1)
-    elif len(sys.argv) == 4 and mode == "whole":
-        # Check if the 4th argument is actually a limit
-        try:
-            limit = int(sys.argv[3])
-            if limit <= 0:
-                print("Error: Limit must be a positive integer.")
-                sys.exit(1)
-        except ValueError:
-            pass  # It's actually the mode argument
+    parser.add_argument('-l', '--limit', type=int,
+                        help='Maximum number of scores to process (optional)')
 
-    return filename, dataset_name, mode, limit
+    return parser.parse_args()
 
 
 def process_file_and_get_scores(filename, dataset_name, limit=None):
@@ -757,13 +702,11 @@ def process_file_and_get_scores(filename, dataset_name, limit=None):
     Returns:
         tuple: (scores_list, score_type) or (None, None) if processing fails
     """
-    # Check if file exists
     if not os.path.exists(filename):
         print(f"Error: File '{filename}' not found.")
         print("Please check the file path and try again.")
         return None, None
 
-    # Only process JSONL files
     if not filename.endswith('.jsonl'):
         print(f"Error: Only JSONL files are supported. Got: {filename}")
         print("Please provide a JSONL file path.")
@@ -842,7 +785,13 @@ def main():
     Parses command line arguments for file path, dataset name, analysis mode, and optional limit,
     then processes the specified file and generates analysis results.
     """
-    filename, dataset_name, mode, limit = parse_arguments()
+    args = parse_args()
+
+    filename = args.file
+    dataset_name = args.dataset
+    mode = args.mode
+    limit = args.limit
+
     Logger().info(f"Dataset: {dataset_name}")
     Logger().info(f"Analysis mode: {mode}")
     if limit is not None:

@@ -15,15 +15,28 @@ The QA System Analyzer provides comprehensive analysis of question-answering per
 cd src
 
 # Analyze with whole system view (default)
-python -m analysis.analyzer <file_path>
+python -m analysis.analyzer -f <file_path> -d <dataset_name>
 
 # Specify analysis mode explicitly
-python -m analysis.analyzer <file_path> <mode>
+python -m analysis.analyzer -f <file_path> -d <dataset_name> -m <mode>
 ```
+
+### Command Line Arguments
+
+#### Required Arguments
+- `-f, --file`: Path to the JSONL file containing QA results (required)
+- `-d, --dataset`: Name of the dataset - choices: `musique`, `locomo`, `hotpot`, `twowiki` (required)
+
+#### Optional Arguments
+- `-m, --mode`: Analysis mode - choices: `whole`, `2-agent` (default: `whole`)
+  - `whole`: Analyze as a single continuous system
+  - `2-agent`: Split analysis into two agents at the midpoint
+- `-l, --limit`: Maximum number of scores to process (optional)
+- `-h, --help`: Show help message and exit
 
 ### Analysis Modes
 - `whole`: Analyze as a single continuous system (default)
-- `2-agent`: Split analysis into two agents at question 1208
+- `2-agent`: Split analysis into two agents at question midpoint
 
 ### Input File Formats
 
@@ -45,16 +58,19 @@ ROUGE-1: 0.856
 
 ```bash
 # Analyze a JSONL file as whole system
-python -m analysis.analyzer output/qa_jobs/qa_results.jsonl whole
+python -m analysis.analyzer -f output/qa_jobs/qa_results.jsonl -d musique
 
 # Analyze with two-agent comparison
-python -m analysis.analyzer output/qa_jobs/qa_results.jsonl 2-agent
+python -m analysis.analyzer -f output/qa_jobs/qa_results.jsonl -d musique -m 2-agent
 
-# Analyze a log file (auto-detected format)
-python -m analysis.analyzer logs/evaluation.log
+# Analyze with a limit on the number of scores processed
+python -m analysis.analyzer -f output/qa_jobs/qa_results.jsonl -d locomo -m whole -l 100
 
-# Get help (run without arguments)
-python -m analysis.analyzer
+# Analyze HotpotQA dataset with 2-agent mode
+python -m analysis.analyzer -f output/qa_jobs/hotpot_results.jsonl -d hotpot -m 2-agent
+
+# Get help
+python -m analysis.analyzer -h
 ```
 
 ## Output
@@ -66,6 +82,6 @@ python -m analysis.analyzer
 - **Agent Comparison**: Performance comparison when using 2-agent mode
 
 ### Generated Files
-- **Timestamped Plots**: `rouge_1_learning_progression_YYYYMMDD_HHMMSS.eps`
+- **Timestamped Plots**: `rouge_1_learning_progression_<dataset>_<mode>_YYYYMMDD_HHMMSS.eps`
 - **Comprehensive Visualizations**: 4-panel plots showing different analysis perspectives
 - **EPS Format**: Vector graphics suitable for LaTeX document integration
