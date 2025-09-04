@@ -703,13 +703,11 @@ def process_file_and_get_scores(filename, dataset_name, limit=None):
         tuple: (scores_list, score_type) or (None, None) if processing fails
     """
     if not os.path.exists(filename):
-        print(f"Error: File '{filename}' not found.")
-        print("Please check the file path and try again.")
+        Logger().error(f"Error: File '{filename}' not found.")
         return None, None
 
     if not filename.endswith('.jsonl'):
-        print(f"Error: Only JSONL files are supported. Got: {filename}")
-        print("Please provide a JSONL file path.")
+        Logger().error("Only JSONL files are supported.")
         return None, None
 
     Logger().info(f"Processing JSONL file: {filename}")
