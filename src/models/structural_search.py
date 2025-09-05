@@ -185,6 +185,8 @@ class StructuralSearchEngine:
         cosine_similarities = cosine_similarity(
             query_vector, self.skeleton_vectors).flatten()
 
+        top_k = min(top_k, len(self.questions))
+
         # Get top similar skeletons (excluding exact matches)
         top_indices = np.argpartition(cosine_similarities, -top_k)[-top_k:]
         top_indices = top_indices[np.argsort(cosine_similarities[top_indices])[::-1]]

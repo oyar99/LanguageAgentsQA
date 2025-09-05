@@ -471,11 +471,12 @@ Question: "{question}"
         }
 
         self._episodic_memory.append(episodic_entry)
-        self._update_structural_index(episodic_entry)
 
         Logger().debug(
             f"Updated episodic memory with new {'correct' if is_correct else 'incorrect'} entry. "
             f"Total entries: {len(self._episodic_memory)}")
+        
+        self._update_structural_index(episodic_entry)
 
 
 # Default job arguments
