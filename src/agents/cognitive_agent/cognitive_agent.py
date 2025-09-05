@@ -4,7 +4,6 @@
 import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
-from collections import defaultdict
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -20,8 +19,6 @@ from utils.dataset_utils import get_complete_evidence
 from utils.structure_response import parse_structured_response
 
 # pylint: disable-next=too-many-instance-attributes
-
-
 class CognitiveAgent(StatefulIntelligentAgent):
     """
     ReactAgentCustom for reasoning over indexed documents using a custom instruction fine-tuned model
