@@ -20,6 +20,8 @@ from utils.dataset_utils import get_complete_evidence
 from utils.structure_response import parse_structured_response
 
 # pylint: disable-next=too-many-instance-attributes
+
+
 class CognitiveAgent(StatefulIntelligentAgent):
     """
     ReactAgentCustom for reasoning over indexed documents using a custom instruction fine-tuned model
@@ -191,9 +193,6 @@ keywords related to the question.",
             Logger().debug("No episodic memory entries available")
             return None
 
-        # Rebuild the structural search index with current episodic memory
-        self._rebuild_structural_index()
-
         # Search for structurally similar questions
         similar_questions = self._structural_search.search(question, top_k=100)
 
@@ -293,47 +292,40 @@ keywords related to the question.",
 
         return usage_metrics
 
-    def _rebuild_structural_index(self) -> None:
+    def _update_structural_index(self, memory_entry: Dict[str, Any]) -> None:
         """
-        Rebuild the structural search index with current episodic memory entries.
+        Update the structural search index with a new question entry.
+
+        Args:
+            question: The new question to add to the index.
         """
         if not self._episodic_memory:
             return
 
-        # Clear existing index
-        self._structural_search.questions = []
-        self._structural_search.skeletons = []
-        self._structural_search.skeleton_to_questions = defaultdict(list)
+        question = memory_entry.get("question")
 
-        # Add all episodic memory entries to the index
-        for i, memory_entry in enumerate(self._episodic_memory):
-            question = memory_entry.get("question")
+        # Convert question to structural skeleton
+        skeleton = self._structural_search.question_to_skeleton(question)
 
-            if question:
-                # Convert question to structural skeleton
-                skeleton = self._structural_search.question_to_skeleton(
-                    question)
+        # Add to index
+        self._structural_search.questions.append(
+            memory_entry)
+        self._structural_search.skeletons.append(skeleton)
+        self._structural_search.skeleton_to_questions[skeleton].append(
+            len(self._structural_search.questions) - 1)
 
-                # Add to index
-                self._structural_search.questions.append(memory_entry)
-                self._structural_search.skeletons.append(skeleton)
-                self._structural_search.skeleton_to_questions[skeleton].append(
-                    i)
+        self._structural_search.vectorizer = TfidfVectorizer(
+            ngram_range=(1, 3),
+            max_features=5000,
+            token_pattern=r'\b\w+\b|<[^>]+>',
+            lowercase=False
+        )
+        self._structural_search.skeleton_vectors = self._structural_search.vectorizer.fit_transform(
+            self._structural_search.skeletons
+        )
 
-        # Rebuild TF-IDF vectors if we have questions
-        if self._structural_search.skeletons:
-            self._structural_search.vectorizer = TfidfVectorizer(
-                ngram_range=(1, 3),
-                max_features=5000,
-                token_pattern=r'\b\w+\b|<[^>]+>',
-                lowercase=False
-            )
-            self._structural_search.skeleton_vectors = self._structural_search.vectorizer.fit_transform(
-                self._structural_search.skeletons
-            )
-
-            Logger().debug(
-                f"Rebuilt structural index with {len(self._structural_search.questions)} questions")
+        Logger().debug(
+            f"Rebuilt structural index with {len(self._structural_search.questions)} questions")
 
     def _format_structural_examples(self, examples: List[Tuple[Dict[str, Any], str, float]]) -> str:
         """
@@ -482,6 +474,7 @@ Question: "{question}"
         }
 
         self._episodic_memory.append(episodic_entry)
+        self._update_structural_index(episodic_entry)
 
         Logger().debug(
             f"Updated episodic memory with new {'correct' if is_correct else 'incorrect'} entry. "

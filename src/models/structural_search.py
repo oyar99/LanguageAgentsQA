@@ -12,6 +12,7 @@ from typing import List, Dict, Tuple
 import spacy
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
 from logger.logger import Logger
 
 
@@ -30,7 +31,7 @@ class StructuralSearchEngine:
             list)  # Map skeletons to question indices
 
         # TF-IDF vectorizer for skeleton similarity
-        self.vectorizer = None
+        self.vectorizer: TfidfVectorizer = None
         self.skeleton_vectors = None
 
         Logger().debug("Structural Search Engine initialized.")
@@ -185,15 +186,19 @@ class StructuralSearchEngine:
             query_vector, self.skeleton_vectors).flatten()
 
         # Get top similar skeletons (excluding exact matches)
-        similar_indices = []
-        for idx in np.argsort(cosine_similarities)[::-1]:
-            if self.skeletons[idx] != query_skeleton:  # Exclude exact matches
-                similar_indices.append((idx, cosine_similarities[idx]))
+        top_indices = np.argpartition(cosine_similarities, -top_k)[-top_k:]
+        top_indices = top_indices[np.argsort(cosine_similarities[top_indices])[::-1]]
+
+        similar_indices = [
+            (idx, cosine_similarities[idx]) 
+            for idx in top_indices 
+            if self.skeletons[idx] != query_skeleton
+        ]
 
         # Method 3: Edit distance for very similar structures
         edit_distance_results = []
-        # Check top_k by cosine similarity
-        for idx, cosine_score in similar_indices[:top_k]:
+        # Check by cosine similarity
+        for idx, cosine_score in similar_indices:
             edit_dist = self.compute_edit_distance(
                 query_skeleton, self.skeletons[idx])
             # Combine cosine similarity and edit distance
