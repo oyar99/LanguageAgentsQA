@@ -30,7 +30,6 @@ class TestCognitiveAgentIntegration(IntegrationTest):
 
     @patch('models.agent.Lock', new=MagicMock)
     @patch('models.agent.Pool', new=MockPool)
-    @patch('spacy.load', new=MagicMock)
     @patch('builtins.open', side_effect=mock_open)
     @patch('predictor.predictor.get_qa_output_path', side_effect=mock_qa_output_path)
     @patch('predictor.predictor.get_retrieval_output_path', side_effect=mock_retrieval_output_path)
