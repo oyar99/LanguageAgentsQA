@@ -192,8 +192,8 @@ class StructuralSearchEngine:
         top_indices = top_indices[np.argsort(cosine_similarities[top_indices])[::-1]]
 
         similar_indices = [
-            (idx, cosine_similarities[idx]) 
-            for idx in top_indices 
+            (idx, cosine_similarities[idx])
+            for idx in top_indices
             if self.skeletons[idx] != query_skeleton
         ]
 
