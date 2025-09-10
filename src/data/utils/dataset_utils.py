@@ -7,7 +7,8 @@ def generate_corpus(
     input_path: str,
     output_path: str,
     context_extractor: Callable[[Any], dict[str, str]],
-    context_key='context'
+    context_key='context',
+    limit=None,
 ) -> None:
     """
     Generate a corpus from the input dataset by extracting documents from the context.
@@ -18,9 +19,12 @@ def generate_corpus(
         output_path (str): the path to the output file where the documents will be saved
         context_extractor (Callable[[Any], dict[str, str]]): a function that extracts documents from the context
         context_key (str, optional): the property to extract the context from the dataset. Defaults to 'context'.
+        limit (int, optional): maximum number of entries to process. Defaults to None (process all).
     """
     with open(input_path, 'r', encoding='utf-8') as f, open(output_path, 'w', encoding='utf-8') as outfile:
         dataset = json.load(f)
+
+        dataset = dataset if limit is None else dataset[:limit]
 
         documents = [
             context_extractor(context)
