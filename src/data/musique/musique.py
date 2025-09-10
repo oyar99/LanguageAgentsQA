@@ -15,7 +15,7 @@ class MuSiQue(Dataset):
     """MuSiQue dataset class"""
 
     def __init__(self, args):
-        super().__init__(args, name="MuSiQue")
+        super().__init__(args, name=args.dataset)
         Logger().info("Initialized an instance of the MuSiQue dataset")
 
     def read(self) -> list[DatasetSample]:
@@ -28,7 +28,9 @@ class MuSiQue(Dataset):
         Logger().info("Reading the MuSiQue dataset")
         conversation_id = self._args.conversation
 
-        with open(os.path.join("data", "musique", "musique_dev.json"), encoding="utf-8") as musique_dataset:
+        file_name = "musique_dev.json" if self._args.dataset == "musique" else "musique_dev_2.json"
+
+        with open(os.path.join("data", "musique", file_name), encoding="utf-8") as musique_dataset:
             data = json.load(musique_dataset)
 
             if self._args.shuffle:
@@ -72,13 +74,14 @@ class MuSiQue(Dataset):
         Returns:
             corpus (list[str]): the corpus
         """
-        file_path = os.path.join("data", "musique", "musique_corpus.json")
+        file_name = "musique_corpus.json" if self._args.dataset == "musique" else "musique_corpus_2.json"
+        file_path = os.path.join("data", "musique", file_name)
         with open(file_path, encoding="utf-8") as musique_corpus:
             corpus = json.load(musique_corpus)
             # pylint: disable=duplicate-code
             corpus = [
                 Document(doc_id=get_content_hash(
-                    doc['text']), content=f'{doc["title"]}:{doc["text"]}')
+                    doc['text']), content=f'{doc["title"]}:{doc["text"]}', title=doc["title"])
                 for doc in corpus
             ]
             super()._log_dataset_stats(corpus)

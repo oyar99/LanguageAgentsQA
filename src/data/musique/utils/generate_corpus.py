@@ -15,3 +15,13 @@ if __name__ == "__main__":
             'title': context['title'], 'text': context['paragraph_text']},
         context_key='paragraphs'
     )
+
+    # Read the MusiQue test dataset
+    generate_corpus(
+        input_path='musique_dev_2.json',
+        output_path='musique_corpus_2.json',
+        context_extractor=lambda context: {
+            'title': context['title'], 'text': context['paragraph_text']},
+        context_key='paragraphs',
+        limit=1000
+    )

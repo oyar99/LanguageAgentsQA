@@ -2,10 +2,6 @@
 
 import json
 
-INPUT_FILE = 'data/musique_ans_v1.0_dev.jsonl'
-OUTPUT_FILE = 'musique_dev.json'
-
-
 def prettify_json_lines(input_file: str, output_file: str) -> None:
     """Pretty print JSON lines in a file.
 
@@ -25,4 +21,5 @@ def prettify_json_lines(input_file: str, output_file: str) -> None:
 
 
 if __name__ == "__main__":
-    prettify_json_lines(INPUT_FILE, OUTPUT_FILE)
+    prettify_json_lines('data/musique_ans_v1.0_dev.jsonl', 'musique_dev.json')
+    prettify_json_lines('data/musique_ans_v1.0_train.jsonl', 'musique_dev_2.json')
