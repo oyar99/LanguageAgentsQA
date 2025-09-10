@@ -170,6 +170,8 @@ temp/
 # Ignore hotpot dataset files as they are too large
 src/data/hotpot/hotpot_dev_distractor_v1.json
 src/data/hotpot/hotpot_corpus.json
+src/data/hotpot/hotpot_corpus_2.json
+src/data/hotpot/hotpot_train_v1.1.json
 
 # Ignore 2wikimultihopqa dataset files as they are too large
 src/data/twowikimultihopqa/dev.json
@@ -178,6 +180,8 @@ src/data/twowikimultihopqa/corpus.json
 # Ignore musique dataset files as they are too large
 src/data/musique/musique_dev.json
 src/data/musique/musique_corpus.json
+src/data/musique/musique_corpus_2.json
+src/data/musique/musique_dev_2.json
 src/data/musique/data/
 
 # Ignore vllm files and environment
