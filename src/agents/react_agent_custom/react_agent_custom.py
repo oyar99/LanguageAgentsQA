@@ -31,7 +31,7 @@ keywords related to the question.",
                 self._search_documents
             )
         }
-        self._enable_pruning = True
+        self._enable_pruning = False
         prompt_examples = PROMPT_EXAMPLE_TOOLS_LOCOMO if args.dataset == 'locomo' else PROMPT_EXAMPLES_TOOLS
         super().__init__(actions, prompt_examples, args)
         self._enable_reflection = False
