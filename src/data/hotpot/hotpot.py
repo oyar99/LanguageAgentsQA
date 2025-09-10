@@ -15,7 +15,7 @@ class Hotpot(Dataset):
     """Hotpot dataset class."""
 
     def __init__(self, args):
-        super().__init__(args, name="hotpot")
+        super().__init__(args, name=args.dataset)
         Logger().info("Initialized an instance of the Hotpot dataset")
 
     def read(self) -> list[DatasetSample]:
@@ -28,9 +28,11 @@ class Hotpot(Dataset):
         Logger().info("Reading the Hotpot dataset")
         conversation_id = self._args.conversation
 
+        file_name = "hotpot_train_v1.1.json" if self._args.dataset == "hotpot2" else "hotpot_dev_distractor_v1.json"
+
         # pylint: disable=duplicate-code
         file_path = os.path.join(
-            "data", "hotpot", "hotpot_dev_distractor_v1.json")
+            "data", "hotpot", file_name)
         with open(file_path, encoding="utf-8") as hotpot_dataset:
             data = json.load(hotpot_dataset)
 
@@ -76,12 +78,14 @@ class Hotpot(Dataset):
             corpus (list[Document]): the corpus
         """
         Logger().info("Reading the Hotpot dataset corpus")
-        file_path = os.path.join("data", "hotpot", "hotpot_corpus.json")
+
+        file_name = "hotpot_corpus_2.json" if self._args.dataset == "hotpot2" else "hotpot_corpus.json"
+        file_path = os.path.join("data", "hotpot", file_name)
         with open(file_path, encoding="utf-8") as hotpot_corpus:
             corpus = json.load(hotpot_corpus)
             corpus = [
                 Document(doc_id=get_content_hash(
-                    doc['text']), content=f'{doc["title"]}:{doc["text"]}')
+                    doc['text']), content=f'{doc["title"]}:{doc["text"]}', title=doc["title"])
                 for doc in corpus
             ]
             super()._log_dataset_stats(corpus)

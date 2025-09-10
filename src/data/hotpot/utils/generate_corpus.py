@@ -13,3 +13,11 @@ if __name__ == "__main__":
         output_path='hotpot_corpus.json',
         context_extractor=lambda context: { 'title': context[0], 'text': ''.join(context[1]) }
     )
+
+    # Read the first 1000 entries from the hotpot dataset
+    generate_corpus(
+        input_path='hotpot_train_v1.1.json',
+        output_path='hotpot_corpus_2.json',
+        context_extractor=lambda context: { 'title': context[0], 'text': ''.join(context[1]) },
+        limit=1000
+    )
