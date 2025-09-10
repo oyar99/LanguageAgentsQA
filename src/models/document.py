@@ -16,10 +16,16 @@ class Document(dict):
         content (str): the content of the document
     """
 
-    def __init__(self, doc_id: str, content: str, folder_id: Optional[str] = None):
+    def __init__(self,
+                 doc_id: str,
+                 content: str,
+                 folder_id: Optional[str] = None,
+                 title: Optional[str] = None
+                 ):
         dict.__init__(self, doc_id=doc_id, folder_id=folder_id,
-                      content=content)
+                      content=content, title=title)
 
     def __repr__(self):
         return f"""Document(doc_id={self.get('doc_id')}, \
-folder_id={self.get('folder_id')} content={self.get('content')})"""
+folder_id={self.get('folder_id')} content={self.get('content')}) \
+title={self.get('title')}"""
