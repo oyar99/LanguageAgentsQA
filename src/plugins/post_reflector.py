@@ -74,7 +74,7 @@ No Escape >> cast member → Valerie Hobson
 
     open_ai_request = {
         "custom_id": "post_reflection_analysis",
-        "model": 'gpt-4o-mini-2',
+        "model": args.model,
         "messages": [
             {
                 "role": "system",

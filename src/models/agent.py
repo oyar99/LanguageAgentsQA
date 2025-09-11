@@ -310,6 +310,7 @@ class MultiprocessingStatefulSearchAgent(Agent, ABC):
             init_agent_worker,
             [MainProcessLogger().get_queue(), l]
         ) as pool:
+            Logger().debug(f"Processing {len(questions)} questions in {len(question_groups)} groups using {min(cores, len(question_groups))} cores")
             # Send each group to a worker process
             group_results = pool.map(
                 self._process_question_batch, question_groups)
@@ -319,6 +320,12 @@ class MultiprocessingStatefulSearchAgent(Agent, ABC):
                 results.extend(group_result)
 
         return results
+
+    @abstractmethod
+    def on_complete(self) -> None:
+        """
+        Called when all questions have been processed.
+        """
 
     def _divide_questions_into_groups(self, questions: list[str]) -> list[list[str]]:
         """
@@ -355,6 +362,8 @@ class MultiprocessingStatefulSearchAgent(Agent, ABC):
         """
         results = []
 
+        Logger().debug("Processing question batch")
+
         for question in question_batch:
             try:
                 notebook = self.reason(question)
@@ -373,6 +382,8 @@ class MultiprocessingStatefulSearchAgent(Agent, ABC):
                     "total_tokens": 0
                 })
                 results.append(error_notebook)
+
+        self.on_complete()
 
         return results
 

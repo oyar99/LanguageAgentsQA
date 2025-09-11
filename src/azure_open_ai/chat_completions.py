@@ -71,8 +71,8 @@ def chat_completions(
                 presence_penalty=job["presence_penalty"],
                 max_tokens=job["max_completion_tokens"],
                 stop=job.get("stop", None),
-                tools=job.get("tools", None),
-                tool_choice=job.get("tool_choice", None),
+                tools=job.get("tools", NOT_GIVEN),
+                tool_choice=job.get("tool_choice", NOT_GIVEN),
                 response_format=job.get("response_format", NOT_GIVEN),
             )
 

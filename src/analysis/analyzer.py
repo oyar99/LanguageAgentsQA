@@ -50,7 +50,7 @@ def calculate_rouge1_score(expected_answers, actual_answer):
     return scores[0]
 
 
-def load_dataset(dataset_name: str = "musique") -> Dict[str, QuestionAnswer]:
+def load_dataset(dataset_name: str) -> Dict[str, QuestionAnswer]:
     """
     Load dataset using the project's existing Dataset classes.
 
@@ -72,13 +72,15 @@ def load_dataset(dataset_name: str = "musique") -> Dict[str, QuestionAnswer]:
             self.shuffle = False
             self.limit = None  # No limit
             self.model = None  # Required for prompt selection
+            self.dataset = dataset_name
 
     # Map dataset names to classes
     dataset_classes = {
         'musique': MuSiQue,
         'locomo': Locomo,
         'hotpot': Hotpot,
-        'twowiki': TwoWiki
+        'twowiki': TwoWiki,
+        'hotpot2': Hotpot,
     }
 
     if dataset_name.lower() not in dataset_classes:
@@ -677,7 +679,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-f', '--file', type=str, required=True,
                         help='Path to the JSONL file containing QA results (required)')
 
-    parser.add_argument('-d', '--dataset', choices=['musique', 'locomo', 'hotpot', 'twowiki'],
+    parser.add_argument('-d', '--dataset', choices=['musique', 'locomo', 'hotpot', 'twowiki', 'hotpot2', 'musique2'],
                         required=True, help='Name of the dataset (required)')
 
     parser.add_argument('-m', '--mode', choices=['whole', '2-agent'], default='whole',

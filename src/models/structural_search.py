@@ -13,16 +13,24 @@ import spacy
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sentence_transformers import SentenceTransformer
 from logger.logger import Logger
 
 
 class StructuralSearchEngine:
     """Search engine for finding structurally similar questions."""
 
-    def __init__(self):
-        """Initialize the search engine."""
+    def __init__(self, use_semantic_search=False):
+        """Initialize the search engine.
+        
+        Args:
+            use_semantic_search (bool): If True, use semantic search instead of structural search
+        """
         # Load spaCy model
         self.nlp = spacy.load("en_core_web_sm")
+        
+        # Search mode configuration
+        self.use_semantic_search = use_semantic_search
 
         # Storage for indexed questions
         self.questions = []  # Original questions
@@ -33,6 +41,16 @@ class StructuralSearchEngine:
         # TF-IDF vectorizer for skeleton similarity
         self.vectorizer: TfidfVectorizer = None
         self.skeleton_vectors = None
+        
+        # Embedding model for semantic similarity
+        self.embedding_model: SentenceTransformer = None
+        self.question_embeddings = None
+        
+        # Initialize embedding model if using semantic search
+        if self.use_semantic_search:
+            Logger().debug("Loading sentence transformer model...")
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            Logger().debug("Sentence transformer model loaded.")
 
         Logger().debug("Structural Search Engine initialized.")
 
@@ -153,8 +171,67 @@ class StructuralSearchEngine:
 
         return 1.0 - similarity  # Convert similarity to distance
 
+    def search_semantic(self, query: str, top_k: int = 5) -> List[Tuple[Dict, str, float]]:
+        """
+        Search for semantically similar questions using sentence embeddings on actual question text.
+
+        Args:
+            query: User's query question
+            top_k: Number of results to return
+
+        Returns:
+            List[Tuple[Dict, str, float]]: List of (question_data, skeleton, similarity_score)
+        """
+        if not self.questions:
+            Logger().warn("Index not built. No questions available for search.")
+            return []
+
+        Logger().debug(f"Searching semantically for query: {query}")
+
+        # Encode the query
+        query_embedding = self.embedding_model.encode([query])
+
+        # Compute cosine similarities
+        semantic_similarities = cosine_similarity(
+            query_embedding, self.question_embeddings).flatten()
+
+        # Get top similar questions
+        top_k = min(top_k, len(self.questions))
+        top_indices = np.argpartition(semantic_similarities, -top_k)[-top_k:]
+        top_indices = top_indices[np.argsort(semantic_similarities[top_indices])[::-1]]
+
+        # Format results - return actual question data with corresponding skeletons
+        results = []
+        for idx in top_indices:
+            if semantic_similarities[idx] > 0:  # Only include non-zero similarities
+                Logger().debug(f"Found semantically similar question: \
+ {self.questions[idx]} with similarity {semantic_similarities[idx]:.4f}")
+                results.append(
+                    (self.questions[idx], self.skeletons[idx], semantic_similarities[idx])
+                )
+
+        Logger().debug(f"Found {len(results)} semantically similar questions using embeddings")
+        return results
+
     # pylint: disable-next=too-many-locals
     def search(self, query: str, top_k: int = 5) -> List[Tuple[Dict, str, float]]:
+        """
+        Search for similar questions. Delegates to semantic or structural search based on configuration.
+
+        Args:
+            query: User's query question
+            top_k: Number of results to return
+
+        Returns:
+            List[Tuple[Dict, str, float]]: List of (question_data, skeleton, similarity_score)
+        """
+        if self.use_semantic_search:
+            return self.search_semantic(query, top_k)
+        else:
+            return self.search_structural(query, top_k)
+
+    # pylint: disable-next=too-many-locals
+    def search_structural(self, query: str, top_k: int = 5) -> List[Tuple[Dict, str, float]]:
         """
         Search for structurally similar questions.
 
@@ -181,6 +258,52 @@ class StructuralSearchEngine:
                     (self.questions[idx], query_skeleton, 1.0))
 
         # Method 2: TF-IDF cosine similarity
+        """
+        query_vector = self.vectorizer.transform([query_skeleton])
+        cosine_similarities = cosine_similarity(
+            query_vector, self.skeleton_vectors).flatten()
+
+        top_k = min(top_k, len(self.questions))
+
+        # Get top similar skeletons (excluding exact matches)
+        top_indices = np.argpartition(cosine_similarities, -top_k)[-top_k:]
+        top_indices = top_indices[np.argsort(cosine_similarities[top_indices])[::-1]]
+
+        similar_indices = [
+            (idx, cosine_similarities[idx])
+            for idx in top_indices
+            if self.skeletons[idx] != query_skeleton
+        ]
+        
+
+        # Method 3: Edit distance for very similar structures
+        edit_distance_results = []
+        # Check by cosine similarity
+        for idx, cosine_score in similar_indices:
+            edit_dist = self.compute_edit_distance(
+                query_skeleton, self.skeletons[idx])
+            # Combine cosine similarity and edit distance
+            combined_score = (cosine_score + (1.0 - edit_dist)) / 2.0
+            edit_distance_results.append((idx, combined_score))
+
+        # Sort by combined score and take top results
+        edit_distance_results.sort(key=lambda x: x[1], reverse=True)
+        """
+
+        """
+        edit_distance_results = []
+
+        for idx, skeleton in enumerate(self.skeletons):
+            if skeleton == query_skeleton:
+                continue  # Skip exact matches
+            edit_dist = self.compute_edit_distance(query_skeleton, skeleton)
+            similarity_score = 1.0 - edit_dist
+            edit_distance_results.append((idx, similarity_score))
+
+        # Sort by similarity score
+        edit_distance_results.sort(key=lambda x: x[1], reverse=True)
+        """
+
         query_vector = self.vectorizer.transform([query_skeleton])
         cosine_similarities = cosine_similarity(
             query_vector, self.skeleton_vectors).flatten()
@@ -197,18 +320,7 @@ class StructuralSearchEngine:
             if self.skeletons[idx] != query_skeleton
         ]
 
-        # Method 3: Edit distance for very similar structures
-        edit_distance_results = []
-        # Check by cosine similarity
-        for idx, cosine_score in similar_indices:
-            edit_dist = self.compute_edit_distance(
-                query_skeleton, self.skeletons[idx])
-            # Combine cosine similarity and edit distance
-            combined_score = (cosine_score + (1.0 - edit_dist)) / 2.0
-            edit_distance_results.append((idx, combined_score))
-
-        # Sort by combined score and take top results
-        edit_distance_results.sort(key=lambda x: x[1], reverse=True)
+        edit_distance_results = similar_indices
 
         # Combine results
         results = exact_matches[:top_k]  # First add exact matches
