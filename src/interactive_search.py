@@ -68,10 +68,12 @@ class InteractiveSearchEngine:
 
     def _create_mock_args(self):
         """Create mock arguments for dataset initialization."""
+        # pylint: disable-next=too-few-public-methods
         class MockArgs:
             """
             Mock arguments class for dataset initialization.
             """
+
             def __init__(self):
                 self.limit = None
                 self.conversation = None
