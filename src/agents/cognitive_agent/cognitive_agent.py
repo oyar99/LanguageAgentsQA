@@ -41,7 +41,7 @@ class CognitiveAgent(StatefulIntelligentAgent):
         self.use_structural_search_only = False
 
         # Hardcoded filename for frozen memory state
-        self._frozen_memory_filename = "episodic_memory_musique.json"
+        self._frozen_memory_filename = "episodic_memory_hotpot.json"
 
         # Generate a unique filename for this run's memory saves
         self._current_run_memory_filename = f"episodic_memory_{str(uuid.uuid4())}.json"
@@ -63,8 +63,10 @@ keywords related to the question.",
 
         # Initialize structural search engine based on search mode
         use_semantic = not self.use_structural_search_only
-        self._structural_search = StructuralSearchEngine(use_semantic_search=use_semantic)
-        Logger().info(f"Initialized {'Semantic' if use_semantic else 'Structural'} Search Engine")
+        self._structural_search = StructuralSearchEngine(
+            use_semantic_search=use_semantic)
+        Logger().info(
+            f"Initialized {'Semantic' if use_semantic else 'Structural'} Search Engine")
 
         # Load frozen memory if memory is frozen
         if self.is_memory_frozen:
@@ -210,7 +212,7 @@ keywords related to the question.",
         """
         Logger().debug(f"Pre-reasoning for question: {question}")
         Logger().debug(f"Episodic memory size: {len(self._episodic_memory)}")
-        
+
         if len(self._episodic_memory) < 1:
             # Use default examples
             self._prompt = self._base_prompt + "\n## EXAMPLES\n" + (
@@ -241,7 +243,7 @@ keywords related to the question.",
             )
 
             return None
-        
+
         final_examples = []
         usage_metrics = None
 
@@ -250,7 +252,8 @@ keywords related to the question.",
                 final_examples.append(ex)
                 continue
 
-            Logger().debug(f"Example question missing reasoning chain: {ex[0]['question']}")
+            Logger().debug(
+                f"Example question missing reasoning chain: {ex[0]['question']}")
 
             if self.is_memory_frozen:
                 continue
@@ -260,7 +263,7 @@ keywords related to the question.",
             # get ground truth supporting documents
             evidence = get_complete_evidence(
                 question_obj, self._corpus, self._args.dataset)
-            
+
             post_reflection_result = post_reflector(
                 self._args,
                 ex[0]['question'],
@@ -273,7 +276,8 @@ keywords related to the question.",
                 reasoning_chain, usage_metrics = post_reflection_result
 
                 if reasoning_chain:
-                    final_examples.append(({**ex[0], 'correct_reasoning_chain': reasoning_chain}, ex[1], ex[2]))
+                    final_examples.append(
+                        ({**ex[0], 'correct_reasoning_chain': reasoning_chain}, ex[1], ex[2]))
 
                     # Update the episodic memory entry as well
                     for mem_idx, mem_entry in enumerate(self._episodic_memory):
@@ -341,8 +345,10 @@ keywords related to the question.",
         else:
             # Rebuild semantic search index (embeddings on actual questions)
             Logger().debug("Rebuilding semantic embeddings...")
-            question_texts = [q.get('question') for q in self._structural_search.questions]
-            self._structural_search.question_embeddings = self._structural_search.embedding_model.encode(question_texts)
+            question_texts = [q.get('question')
+                              for q in self._structural_search.questions]
+            self._structural_search.question_embeddings = self._structural_search.embedding_model.encode(
+                question_texts)
             Logger().debug(
                 f"Rebuilt semantic index with {len(self._structural_search.questions)} questions")
 

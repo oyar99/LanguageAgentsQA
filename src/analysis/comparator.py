@@ -17,6 +17,7 @@ Examples:
     python -m analysis.comparator -f1 results1.jsonl -f2 results2.jsonl -o comparison_output
 """
 
+# pylint: disable=duplicate-code
 import argparse
 import json
 import os
@@ -79,7 +80,7 @@ def load_musique_dataset() -> Dict[str, QuestionAnswer]:
     Logger().info(f"Loaded {len(result)} questions from MuSiQue dataset")
     return result
 
-
+# pylint: disable-next=too-many-locals
 def process_jsonl_file(file_path: str, dataset_qa: Dict[str, QuestionAnswer]) -> Dict[str, Dict]:
     """
     Process JSONL file and extract question answers with their ROUGE-1 scores.
@@ -104,14 +105,16 @@ def process_jsonl_file(file_path: str, dataset_qa: Dict[str, QuestionAnswer]) ->
                 # Extract question ID from custom_id field
                 custom_id = data.get('custom_id', '')
                 if not custom_id:
-                    Logger().warn(f"Warning: No custom_id found on line {line_num} in {file_path}")
+                    Logger().warn(
+                        f"Warning: No custom_id found on line {line_num} in {file_path}")
                     continue
 
                 question_id = custom_id
 
                 # Find corresponding entry in dataset
                 if question_id not in dataset_qa:
-                    Logger().warn(f"Warning: Question ID '{question_id}' not found in dataset (line {line_num})")
+                    Logger().warn(
+                        f"Warning: Question ID '{question_id}' not found in dataset (line {line_num})")
                     continue
 
                 matched_count += 1
@@ -124,7 +127,8 @@ def process_jsonl_file(file_path: str, dataset_qa: Dict[str, QuestionAnswer]) ->
                 all_expected_answers = qa_obj['answer']
 
                 # Calculate ROUGE-1 score
-                rouge1_score, _, _ = calculate_rouge1_score(all_expected_answers, predicted_answer)
+                rouge1_score, _, _ = calculate_rouge1_score(
+                    all_expected_answers, predicted_answer)
 
                 # Store result info
                 results[question_id] = {
@@ -136,10 +140,12 @@ def process_jsonl_file(file_path: str, dataset_qa: Dict[str, QuestionAnswer]) ->
                 }
 
             except json.JSONDecodeError as e:
-                Logger().error(f"Error parsing JSON on line {line_num} in {file_path}: {e}")
+                Logger().error(
+                    f"Error parsing JSON on line {line_num} in {file_path}: {e}")
                 continue
             except KeyError as e:
-                Logger().error(f"Error extracting data on line {line_num} in {file_path}: {e}")
+                Logger().error(
+                    f"Error extracting data on line {line_num} in {file_path}: {e}")
                 continue
 
     Logger().info(f"Processed {processed_count} entries from {file_path}")
@@ -149,8 +155,8 @@ def process_jsonl_file(file_path: str, dataset_qa: Dict[str, QuestionAnswer]) ->
     return results
 
 
-def compare_results(results1: Dict[str, Dict], results2: Dict[str, Dict], 
-                   threshold: float = 0.3) -> Tuple[List[Dict], List[Dict]]:
+def compare_results(results1: Dict[str, Dict], results2: Dict[str, Dict],
+                    threshold: float = 0.3) -> Tuple[List[Dict], List[Dict]]:
     """
     Compare two sets of results and find questions where one performed better than the other.
 
@@ -164,7 +170,8 @@ def compare_results(results1: Dict[str, Dict], results2: Dict[str, Dict],
     """
     # Find common questions
     common_questions = set(results1.keys()) & set(results2.keys())
-    Logger().info(f"Found {len(common_questions)} common questions between files")
+    Logger().info(
+        f"Found {len(common_questions)} common questions between files")
 
     file1_better = []  # Correct in file1, incorrect in file2
     file2_better = []  # Correct in file2, incorrect in file1
@@ -214,8 +221,8 @@ def compare_results(results1: Dict[str, Dict], results2: Dict[str, Dict],
     return file1_better, file2_better
 
 
-def save_comparison_results(file1_better: List[Dict], file2_better: List[Dict], 
-                          output_prefix: str, file1_name: str, file2_name: str):
+def save_comparison_results(file1_better: List[Dict], file2_better: List[Dict],
+                            output_prefix: str, file1_name: str, file2_name: str):
     """
     Save comparison results to JSONL files.
 
@@ -227,61 +234,71 @@ def save_comparison_results(file1_better: List[Dict], file2_better: List[Dict],
         file2_name: Name of second file (for labeling)
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
     # Create output directory if it doesn't exist
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     output_dir = os.path.join(project_root, "output", "misc")
     os.makedirs(output_dir, exist_ok=True)
 
     # File1 better results
-    file1_better_path = os.path.join(output_dir, f"{output_prefix}_file1_better_{timestamp}.jsonl")
+    file1_better_path = os.path.join(
+        output_dir, f"{output_prefix}_file1_better_{timestamp}.jsonl")
     with open(file1_better_path, 'w', encoding='utf-8') as f:
         for item in file1_better:
             json.dump(item, f)
             f.write('\n')
 
-    # File2 better results  
-    file2_better_path = os.path.join(output_dir, f"{output_prefix}_file2_better_{timestamp}.jsonl")
+    # File2 better results
+    file2_better_path = os.path.join(
+        output_dir, f"{output_prefix}_file2_better_{timestamp}.jsonl")
     with open(file2_better_path, 'w', encoding='utf-8') as f:
         for item in file2_better:
             json.dump(item, f)
             f.write('\n')
 
-    Logger().info(f"Saved {len(file1_better)} questions where {file1_name} performed better to: {file1_better_path}")
-    Logger().info(f"Saved {len(file2_better)} questions where {file2_name} performed better to: {file2_better_path}")
+    Logger().info(
+        f"Saved {len(file1_better)} questions where {file1_name} performed better to: {file1_better_path}")
+    Logger().info(
+        f"Saved {len(file2_better)} questions where {file2_name} performed better to: {file2_better_path}")
 
     # Also save a summary report
-    summary_path = os.path.join(output_dir, f"{output_prefix}_comparison_summary_{timestamp}.txt")
+    summary_path = os.path.join(
+        output_dir, f"{output_prefix}_comparison_summary_{timestamp}.txt")
     with open(summary_path, 'w', encoding='utf-8') as f:
         f.write("QA System Comparison Summary\n")
         f.write("=" * 50 + "\n\n")
         f.write(f"File 1: {file1_name}\n")
         f.write(f"File 2: {file2_name}\n")
         f.write(f"Timestamp: {timestamp}\n\n")
-        
-        f.write(f"Questions where File 1 performed better: {len(file1_better)}\n")
-        f.write(f"Questions where File 2 performed better: {len(file2_better)}\n")
-        f.write(f"Total compared questions: {len(file1_better) + len(file2_better)}\n\n")
-        
+
+        f.write(
+            f"Questions where File 1 performed better: {len(file1_better)}\n")
+        f.write(
+            f"Questions where File 2 performed better: {len(file2_better)}\n")
+        f.write(
+            f"Total compared questions: {len(file1_better) + len(file2_better)}\n\n")
+
         if file1_better:
             f.write("File 1 Better - Score Differences:\n")
             score_diffs = [item['score_difference'] for item in file1_better]
-            f.write(f"  Average score difference: {sum(score_diffs) / len(score_diffs):.4f}\n")
+            f.write(
+                f"  Average score difference: {sum(score_diffs) / len(score_diffs):.4f}\n")
             f.write(f"  Max score difference: {max(score_diffs):.4f}\n")
             f.write(f"  Min score difference: {min(score_diffs):.4f}\n\n")
-            
+
         if file2_better:
             f.write("File 2 Better - Score Differences:\n")
             score_diffs = [item['score_difference'] for item in file2_better]
-            f.write(f"  Average score difference: {sum(score_diffs) / len(score_diffs):.4f}\n")
+            f.write(
+                f"  Average score difference: {sum(score_diffs) / len(score_diffs):.4f}\n")
             f.write(f"  Max score difference: {max(score_diffs):.4f}\n")
             f.write(f"  Min score difference: {min(score_diffs):.4f}\n\n")
 
     Logger().info(f"Saved comparison summary to: {summary_path}")
 
 
-def generate_detailed_report(file1_better: List[Dict], file2_better: List[Dict], 
-                           threshold: float, file1_name: str, file2_name: str):
+def generate_detailed_report(file1_better: List[Dict], file2_better: List[Dict],
+                             threshold: float, file1_name: str, file2_name: str):
     """
     Generate a detailed comparison report.
 
@@ -295,24 +312,28 @@ def generate_detailed_report(file1_better: List[Dict], file2_better: List[Dict],
     Logger().info("=" * 80)
     Logger().info("QA SYSTEM COMPARISON RESULTS")
     Logger().info("=" * 80)
-    
+
     Logger().info(f"File 1: {file1_name}")
     Logger().info(f"File 2: {file2_name}")
     Logger().info(f"ROUGE-1 Threshold: {threshold}")
-    Logger().info(f"Total differential questions: {len(file1_better) + len(file2_better)}")
-    
+    Logger().info(
+        f"Total differential questions: {len(file1_better) + len(file2_better)}")
+
     Logger().info("\n" + "-" * 50)
-    Logger().info(f"QUESTIONS WHERE FILE 1 PERFORMED BETTER: {len(file1_better)}")
+    Logger().info(
+        f"QUESTIONS WHERE FILE 1 PERFORMED BETTER: {len(file1_better)}")
     Logger().info("-" * 50)
-    
+
     if file1_better:
         score_diffs = [item['score_difference'] for item in file1_better]
-        Logger().info(f"Average score difference: {sum(score_diffs) / len(score_diffs):.4f}")
+        Logger().info(
+            f"Average score difference: {sum(score_diffs) / len(score_diffs):.4f}")
         Logger().info(f"Max score difference: {max(score_diffs):.4f}")
         Logger().info(f"Min score difference: {min(score_diffs):.4f}")
-        
+
         # Show top 3 examples
-        sorted_by_diff = sorted(file1_better, key=lambda x: x['score_difference'], reverse=True)
+        sorted_by_diff = sorted(
+            file1_better, key=lambda x: x['score_difference'], reverse=True)
         Logger().info("\nTop 3 examples (largest score differences):")
         for i, item in enumerate(sorted_by_diff[:3], 1):
             Logger().info(f"\n{i}. Question ID: {item['question_id']}")
@@ -320,20 +341,24 @@ def generate_detailed_report(file1_better: List[Dict], file2_better: List[Dict],
             Logger().info(f"   Expected: {item['expected_answers'][0]}")
             Logger().info(f"   File1 answer: {item['file1_answer']}")
             Logger().info(f"   File2 answer: {item['file2_answer']}")
-            Logger().info(f"   Scores: File1={item['file1_score']:.4f}, File2={item['file2_score']:.4f}")
-    
+            Logger().info(
+                f"   Scores: File1={item['file1_score']:.4f}, File2={item['file2_score']:.4f}")
+
     Logger().info("\n" + "-" * 50)
-    Logger().info(f"QUESTIONS WHERE FILE 2 PERFORMED BETTER: {len(file2_better)}")
+    Logger().info(
+        f"QUESTIONS WHERE FILE 2 PERFORMED BETTER: {len(file2_better)}")
     Logger().info("-" * 50)
-    
+
     if file2_better:
         score_diffs = [item['score_difference'] for item in file2_better]
-        Logger().info(f"Average score difference: {sum(score_diffs) / len(score_diffs):.4f}")
+        Logger().info(
+            f"Average score difference: {sum(score_diffs) / len(score_diffs):.4f}")
         Logger().info(f"Max score difference: {max(score_diffs):.4f}")
         Logger().info(f"Min score difference: {min(score_diffs):.4f}")
-        
+
         # Show top 3 examples
-        sorted_by_diff = sorted(file2_better, key=lambda x: x['score_difference'], reverse=True)
+        sorted_by_diff = sorted(
+            file2_better, key=lambda x: x['score_difference'], reverse=True)
         Logger().info("\nTop 3 examples (largest score differences):")
         for i, item in enumerate(sorted_by_diff[:3], 1):
             Logger().info(f"\n{i}. Question ID: {item['question_id']}")
@@ -341,7 +366,8 @@ def generate_detailed_report(file1_better: List[Dict], file2_better: List[Dict],
             Logger().info(f"   Expected: {item['expected_answers'][0]}")
             Logger().info(f"   File1 answer: {item['file1_answer']}")
             Logger().info(f"   File2 answer: {item['file2_answer']}")
-            Logger().info(f"   Scores: File1={item['file1_score']:.4f}, File2={item['file2_score']:.4f}")
+            Logger().info(
+                f"   Scores: File1={item['file1_score']:.4f}, File2={item['file2_score']:.4f}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -370,7 +396,7 @@ def parse_args() -> argparse.Namespace:
 
     return parser.parse_args()
 
-
+# pylint: disable-next=too-many-return-statements
 def main():
     """
     Main function to process command line arguments and run QA comparison.
@@ -403,7 +429,6 @@ def main():
     file1_name = os.path.basename(file1_path)
     file2_name = os.path.basename(file2_path)
 
-    Logger().info(f"Comparing QA results from MuSiQue dataset")
     Logger().info(f"File 1: {file1_name}")
     Logger().info(f"File 2: {file2_name}")
     Logger().info(f"ROUGE-1 threshold: {threshold}")
@@ -435,10 +460,12 @@ def main():
 
     # Save results
     Logger().info("Saving comparison results...")
-    save_comparison_results(file1_better, file2_better, output_prefix, file1_name, file2_name)
+    save_comparison_results(file1_better, file2_better,
+                            output_prefix, file1_name, file2_name)
 
     # Generate detailed report
-    generate_detailed_report(file1_better, file2_better, threshold, file1_name, file2_name)
+    generate_detailed_report(file1_better, file2_better,
+                             threshold, file1_name, file2_name)
 
     Logger().info("QA comparison completed successfully!")
 

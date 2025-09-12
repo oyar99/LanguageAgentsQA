@@ -81,6 +81,7 @@ def load_dataset(dataset_name: str) -> Dict[str, QuestionAnswer]:
         'hotpot': Hotpot,
         'twowiki': TwoWiki,
         'hotpot2': Hotpot,
+        'musique2': MuSiQue
     }
 
     if dataset_name.lower() not in dataset_classes:
