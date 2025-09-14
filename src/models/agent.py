@@ -310,7 +310,6 @@ class MultiprocessingStatefulSearchAgent(Agent, ABC):
             init_agent_worker,
             [MainProcessLogger().get_queue(), l]
         ) as pool:
-            Logger().debug(f"Processing {len(questions)} questions in {len(question_groups)} groups using {min(cores, len(question_groups))} cores")
             # Send each group to a worker process
             group_results = pool.map(
                 self._process_question_batch, question_groups)
