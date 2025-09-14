@@ -33,11 +33,12 @@ class CognitiveAgent(StatefulIntelligentAgent):
         self._questions_map = None
         self._args = args
 
-        # Memory control variable - when True, only read from episodic memory, don't write
-        self.is_memory_frozen = True
-        # Hardcoded filename for frozen memory state
-        self._frozen_memory_filename = "episodic_memory_hotpot.json"
+        agent_args = args.agent_args or {}
+        self.is_memory_frozen = agent_args.get('memory_frozen', False)
+        self._frozen_memory_filename = agent_args.get('frozen_memory_filename')
 
+        if self.is_memory_frozen and not self._frozen_memory_filename:
+            raise ValueError("When memory is frozen, 'frozen_memory_filename' must be provided in agent-args")
 
         actions = {
             "search": Action(

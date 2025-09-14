@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 from logger.logger import Logger, MainProcessLogger
 from orchestrator.orchestrator import Orchestrator
+from utils.argparse_utils import KeyValue
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,6 +48,9 @@ Ignored if conversation id is provided (optional)')
                                                   'colbertv2', 'colbertv2_rerank', 'hippo', 'react', 'react_custom',
                                                   'lexical_semantic', 'react_retriever', 'cognitive'],
                         default='default', help='agent to be used (required in predict mode)')
+
+    parser.add_argument('-ag', '--agent-args', type=str, nargs='*', action=KeyValue,
+                        help='additional arguments for the agent in key=value format (optional)')
 
     parser.add_argument('-np', '--noop', action='store_true',
                         help='do not run actual prediction (optional)')
