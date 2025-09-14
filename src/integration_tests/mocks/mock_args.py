@@ -24,7 +24,6 @@ def create_agent_args(override_args: Dict[str, Any] = None) -> argparse.Namespac
     args.shuffle = False
 
     # Optional arguments
-    args.noop = False
     args.k = None
 
     # Evaluation arguments (not used in predict mode)

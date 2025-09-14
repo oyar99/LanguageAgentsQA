@@ -58,12 +58,6 @@ Install required packages.
 pip install -r requirements.txt
 ```
 
-Install required models.
-
-```bash
-python -m spacy download en_core_web_sm
-```
-
 ## Closed-Source Models
 
 The script supports any **closed-source models** that allow **batch deployments** via the Azure Open AI API and **open-source models** that are available via VLLM.

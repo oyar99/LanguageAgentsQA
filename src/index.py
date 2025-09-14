@@ -52,9 +52,7 @@ Ignored if conversation id is provided (optional)')
     parser.add_argument('-ag', '--agent-args', type=str, nargs='*', action=KeyValue,
                         help='additional arguments for the agent in key=value format (optional)')
 
-    parser.add_argument('-np', '--noop', action='store_true',
-                        help='do not run actual prediction (optional)')
-
+    # TODO: Remove this argument in favor of agent-args for agents that need k parameter
     parser.add_argument('-k', '--k', type=int,
                         help='number of documents to be retrieved for agents that support k argument (optional)')
 

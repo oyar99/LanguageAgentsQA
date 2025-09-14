@@ -26,7 +26,7 @@ def predictor(args, dataset: Dataset, agent: Agent) -> None:
     Raises:
         ValueError: if the model deployment identifier is not provided
     """
-    if args.model is None and not args.noop:
+    if args.model is None:
         Logger().error(
             """Model deployment identifier not provided. \
 Please provide the model deployment identifier using the -m flag.""")
@@ -109,7 +109,7 @@ def question_answering(dataset: Dataset, agent: Agent, args) -> Optional[list[Ba
     for result_json, prompt in results:
         prompts[result_json['custom_id']] = prompt
 
-    guard_job(results, args.model, args.noop)
+    guard_job(results, args.model)
 
     open_ai_requests = [
         {
@@ -170,7 +170,7 @@ def batch_question_answering(dataset: Dataset, agent: Agent, args) -> Optional[l
         'result': notebook.get_sources()
     }, notebook.get_notes()) for i, notebook in enumerate(notebooks)]
 
-    guard_job(results, args.model, args.noop)
+    guard_job(results, args.model)
 
     jobs = [{
             "custom_id": result['custom_id'],
@@ -333,14 +333,13 @@ def get_retrieval_output_path() -> str:
         output_dir, f'retrieval_results_{Logger().get_run_id()}.jsonl')
 
 
-def guard_job(results: list[tuple[dict, str]], model: str, stop: bool) -> None:
+def guard_job(results: list[tuple[dict, str]], model: str) -> None:
     """
     Guard the job based on the estimated cost.
 
     Args:
         results (list[tuple[dict, str]]): the results of the job
         model (str): the deployment model name
-        stop (bool): whether to stop the job
 
     Raises:
         RuntimeError: if the cost exceeds $2.0
@@ -348,12 +347,6 @@ def guard_job(results: list[tuple[dict, str]], model: str, stop: bool) -> None:
     if not isinstance(model, str) or len(model) <= 0:
         raise ValueError(
             "model must be a non-empty string.")
-
-    if stop:
-        Logger().error("Returning without queuing job.")
-        raise ValueError(
-            "Returning without queuing job. Please check the arguments."
-        )
 
     cost = 0.0
 
