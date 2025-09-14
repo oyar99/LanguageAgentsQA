@@ -7,13 +7,12 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
-from sklearn.feature_extraction.text import TfidfVectorizer
 from evaluator.rogue_evaluator import rouge_score
 from logger.logger import Logger
 from models.action import Action
 from models.agent import StatefulIntelligentAgent, NoteBook
 from models.dataset import Dataset
-from models.structural_search import StructuralSearchEngine
+from models.questions_search import QuestionsSearchEngine
 from plugins.post_reflector import post_reflector
 import utils.agent_worker as worker
 from utils.dataset_utils import get_complete_evidence
@@ -36,15 +35,9 @@ class CognitiveAgent(StatefulIntelligentAgent):
 
         # Memory control variable - when True, only read from episodic memory, don't write
         self.is_memory_frozen = True
-        # Structural search control variable
-        # when True, only use structural search for finding similar questions
-        self.use_structural_search_only = False
-
         # Hardcoded filename for frozen memory state
         self._frozen_memory_filename = "episodic_memory_hotpot.json"
 
-        # Generate a unique filename for this run's memory saves
-        self._current_run_memory_filename = f"episodic_memory_{str(uuid.uuid4())}.json"
 
         actions = {
             "search": Action(
@@ -61,12 +54,10 @@ keywords related to the question.",
 
         self._episodic_memory: List[Dict[str, Any]] = []
 
-        # Initialize structural search engine based on search mode
-        use_semantic = not self.use_structural_search_only
-        self._structural_search = StructuralSearchEngine(
-            use_semantic_search=use_semantic)
+        # Initialize questions search engine
+        self._questions_search = QuestionsSearchEngine()
         Logger().info(
-            f"Initialized {'Semantic' if use_semantic else 'Structural'} Search Engine")
+            "Initialized Questions Search Engine")
 
         # Load frozen memory if memory is frozen
         if self.is_memory_frozen:
@@ -204,7 +195,6 @@ keywords related to the question.",
 
         return notebook
 
-    # pylint: disable-next=too-many-locals, too-many-branches
     def _pre_reasoning(self, question: str) -> Dict[str, int] | None:
         """
         Pre-process the question before reasoning by finding structurally similar questions
@@ -221,20 +211,14 @@ keywords related to the question.",
 
             return None
 
-        # Search for structurally similar questions
-        similar_questions = self._structural_search.search(question, top_k=4)
+        # Search for semantically similar questions
+        similar_questions = self._questions_search.search(question, top_k=4)
 
         if not similar_questions:
-            Logger().debug("No structurally similar questions found")
+            Logger().debug("No semantically similar questions found")
             return None
 
-        # Filter examples based on similarity threshold
-        valid_examples = [
-            (q_data, skeleton, score) for q_data, skeleton, score in similar_questions
-            # if score > 0.2
-        ]
-
-        if not valid_examples or len(valid_examples) < 2:
+        if not similar_questions or len(similar_questions) < 2:
             Logger().debug("Not enough examples meet similarity threshold")
 
             # use default examples
@@ -247,7 +231,7 @@ keywords related to the question.",
         final_examples = []
         usage_metrics = None
 
-        for ex in valid_examples:
+        for ex in similar_questions:
             if ex[0]['correct_reasoning_chain']:
                 final_examples.append(ex)
                 continue
@@ -277,7 +261,7 @@ keywords related to the question.",
 
                 if reasoning_chain:
                     final_examples.append(
-                        ({**ex[0], 'correct_reasoning_chain': reasoning_chain}, ex[1], ex[2]))
+                        ({**ex[0], 'correct_reasoning_chain': reasoning_chain}, ex[1]))
 
                     # Update the episodic memory entry as well
                     for mem_idx, mem_entry in enumerate(self._episodic_memory):
@@ -287,10 +271,10 @@ keywords related to the question.",
                                 f"Updated episodic memory entry with reasoning chain for question: {ex[0]['question']}")
                             break
 
-        if final_examples:
-            Logger().debug(
+        Logger().debug(
                 f"Selected {len(final_examples)} structurally similar examples for prompt")
 
+        if final_examples:
             # Reverse selected_examples so more similar structural questions appear at the bottom
             # so the model can pay more attention to it
             final_examples.reverse()
@@ -302,55 +286,8 @@ keywords related to the question.",
             self._prompt = self._base_prompt + episodic_section
 
             Logger().debug("Updated prompt with structural examples")
-        else:
-            Logger().debug("No valid structural examples to include")
 
         return usage_metrics
-
-    def _update_questions_index(self, memory_entry: Dict[str, Any]) -> None:
-        """
-        Update the search index with a new question entry.
-        Handles both structural and semantic indexing based on configuration.
-
-        Args:
-            memory_entry: The new memory entry to add to the index.
-        """
-        if not self._episodic_memory:
-            return
-
-        question = memory_entry.get("question")
-
-        # Convert question to structural skeleton
-        skeleton = self._structural_search.question_to_skeleton(question)
-
-        # Add to index
-        self._structural_search.questions.append(memory_entry)
-        self._structural_search.skeletons.append(skeleton)
-        self._structural_search.skeleton_to_questions[skeleton].append(
-            len(self._structural_search.questions) - 1)
-
-        if self.use_structural_search_only:
-            # Rebuild structural search index (TF-IDF on skeletons)
-            self._structural_search.vectorizer = TfidfVectorizer(
-                ngram_range=(1, 3),
-                max_features=5000,
-                token_pattern=r'\b\w+\b|<[^>]+>',
-                lowercase=False
-            )
-            self._structural_search.skeleton_vectors = self._structural_search.vectorizer.fit_transform(
-                self._structural_search.skeletons
-            )
-            Logger().debug(
-                f"Rebuilt structural index with {len(self._structural_search.questions)} questions")
-        else:
-            # Rebuild semantic search index (embeddings on actual questions)
-            Logger().debug("Rebuilding semantic embeddings...")
-            question_texts = [q.get('question')
-                              for q in self._structural_search.questions]
-            self._structural_search.question_embeddings = self._structural_search.embedding_model.encode(
-                question_texts)
-            Logger().debug(
-                f"Rebuilt semantic index with {len(self._structural_search.questions)} questions")
 
     def _save_memory_to_disk(self) -> None:
         """
@@ -364,8 +301,9 @@ keywords related to the question.",
             os.makedirs(cognitive_dir, exist_ok=True)
 
             # Save to the unique filename for this run
+            file_name = f"episodic_memory_{str(uuid.uuid4())}.json"
             filepath = os.path.join(
-                cognitive_dir, self._current_run_memory_filename)
+                cognitive_dir, file_name)
 
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(self._episodic_memory, f,
@@ -381,30 +319,23 @@ keywords related to the question.",
         Load episodic memory from the hardcoded frozen memory file.
         This is called during initialization when memory is frozen.
         """
-        try:
-            cognitive_dir = os.path.join(os.path.normpath(
+        cognitive_dir = os.path.join(os.path.normpath(
                 os.getcwd() + os.sep + os.pardir), 'temp', 'cognitive')
-            frozen_filepath = os.path.join(
-                cognitive_dir, self._frozen_memory_filename)
+        frozen_filepath = os.path.join(
+            cognitive_dir, self._frozen_memory_filename)
 
-            if os.path.exists(frozen_filepath):
-                with open(frozen_filepath, 'r', encoding='utf-8') as f:
-                    self._episodic_memory = json.load(f)
+        if os.path.exists(frozen_filepath):
+            with open(frozen_filepath, 'r', encoding='utf-8') as f:
+                self._episodic_memory = json.load(f)
 
-                Logger().info(
-                    f"Loaded {len(self._episodic_memory)} entries from frozen memory file")
+            Logger().info(
+                f"Loaded {len(self._episodic_memory)} entries from frozen memory file")
 
-                # Rebuild structural search index with loaded memory
-                for entry in self._episodic_memory:
-                    self._update_questions_index(entry)
-            else:
-                Logger().warn(
-                    f"Frozen memory file not found at {frozen_filepath}")
-
-        except Exception as e:
-            Logger().error(f"Failed to load frozen memory: {e}")
-            # Keep empty memory if loading fails
-            self._episodic_memory = []
+            # build search index with loaded memory
+            self._questions_search.build_index(self._episodic_memory)
+        else:
+            Logger().warn(
+                f"Frozen memory file not found at {frozen_filepath}")
 
     def _format_structural_examples(self, examples: List[Tuple[Dict[str, Any], str, float]]) -> str:
         """
@@ -418,7 +349,7 @@ keywords related to the question.",
         """
         formatted_examples = []
 
-        for i, (question_data, _, _) in enumerate(examples, 1):
+        for i, (question_data, _) in enumerate(examples, 1):
             question = question_data.get("question")
             correct_reasoning_chain = question_data.get(
                 "correct_reasoning_chain", "")
@@ -560,7 +491,7 @@ Question: "{question}"
                 f"Updated episodic memory with new {'correct' if is_correct else 'incorrect'} entry. "
                 f"Total entries: {len(self._episodic_memory)}")
 
-            self._update_questions_index(episodic_entry)
+            self._questions_search.rebuild_index(episodic_entry)
         else:
             Logger().debug("Memory is frozen - skipping episodic memory write operation")
 
