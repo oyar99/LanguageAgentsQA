@@ -41,7 +41,7 @@ class QuestionsSearchEngine:
         self._question_embeddings = self._embedding_model.encode(
             question_texts, convert_to_numpy=True)
 
-        Logger().debug(f"Index built successfully with lenght {len(self._questions)}.")
+        Logger().debug(f"Index built successfully with length {len(self._questions)}.")
 
     def rebuild_index(self, question: Dict[str, Any]) -> None:
         """

@@ -106,11 +106,12 @@ def evaluate_retrieval_unranked(doc_pairs: list[tuple[list[Document], list[Docum
 
     Logger().info("Evaluating retrieval score for unranked documents")
 
-    recall, precision, f1 = eval_retrieval_unranked(doc_pairs)
+    recall, precision, f1, avg_doc_count = eval_retrieval_unranked(doc_pairs)
 
     Logger().info(f"Recall: {recall}")
     Logger().info(f"Precision: {precision}")
     Logger().info(f"F1 Score: {f1}")
+    Logger().info(f"Average number of documents retrieved: {avg_doc_count}")
 
 
 def evaluate_retrieval(doc_pairs: list[tuple[list[Document], list[Document]]]) -> None:

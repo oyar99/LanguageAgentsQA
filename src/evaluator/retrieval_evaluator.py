@@ -63,7 +63,8 @@ def eval_retrieval_unranked(doc_pairs: list[tuple[list[Document], list[Document]
         doc_pairs (list[tuple[list[Document], list[Document]]]): \
 A list of pairs with the ground documents and the retrieved documents.
     Returns:
-        recall (Tuple[float, float, float]): the overall recall score, precision, and F1 score
+        recall (Tuple[float, float, float, float]): the overall recall score, precision, F1 score, and \
+average number of documents retrieved.
     """
     recall_scores = [recall(expected, actual) for expected, actual in doc_pairs]
     overall_recall = sum(recall_scores) / len(recall_scores) if recall_scores else 0.0
@@ -74,7 +75,9 @@ A list of pairs with the ground documents and the retrieved documents.
     f1_scores = [f1_score(expected, actual) for expected, actual in doc_pairs]
     overall_f1 = sum(f1_scores) / len(f1_scores) if f1_scores else 0.0
 
-    return (overall_recall, overall_precision, overall_f1)
+    avg_docs_retrieved = sum(len(actual) for _, actual in doc_pairs) / len(doc_pairs) if doc_pairs else 0.0
+
+    return (overall_recall, overall_precision, overall_f1, avg_docs_retrieved)
 
 def recall(expected_docs: list[Document], actual_docs: list[Document]) -> float:
     """

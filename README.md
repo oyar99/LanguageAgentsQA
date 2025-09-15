@@ -137,6 +137,14 @@ python .\index.py -e predict -m gpt-4o-mini -l 10 -ct 1 -d hotpot
 -d hotpot    # Specifies the dataset (hotpotQA) to use.
 ```
 
+### Example 3: Cognitive Agent (MuSiQue2 Dataset)
+
+You can also pass custom agent args through the command line using `ag`.
+
+```sh
+python index.py -e predict -m gpt -d musique2 -a cognitive -ag memory_frozen=True frozen_memory_filename=/home/jrayom/HybridLongMemGPT/temp/cognitive/episodic_memory_musique.json -l 1000
+```
+
 ### Running Evaluation
 
 To evalaute the generated predictions against ground truth using **Exact Match (EM)** and **F1 Score**, run:
