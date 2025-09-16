@@ -61,7 +61,7 @@ googleapis-common-protos==1.69.2
 gritlm==1.0.2
 grpcio==1.71.0
 h11==0.14.0
-hipporag==2.0.0a2
+hipporag==2.0.0a3
 httpcore==1.0.7
 httptools==0.6.4
 httpx==0.28.1

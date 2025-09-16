@@ -12,13 +12,12 @@ CUDA_VISIBLE_DEVICES: <gpu id>
 
 import os
 from logger.logger import Logger
-from models.agent import Agent, NoteBook
+from models.agent import NoteBook, SelfContainedAgent
 from models.dataset import Dataset
 from models.question_answer import QuestionAnswer
 from models.retrieved_result import RetrievedResult
 
-
-class HippoRAG(Agent):
+class HippoRAG(SelfContainedAgent):
     """
     Hippo RAG system for document retrieval.
     """
@@ -28,8 +27,6 @@ class HippoRAG(Agent):
         self._corpus = None
         self._reverse_doc_map = None
         super().__init__(args)
-
-        self.standalone = True
 
     def index(self, dataset: Dataset) -> None:
         """
@@ -52,12 +49,16 @@ class HippoRAG(Agent):
         # pylint: disable-next=import-outside-toplevel
         from hipporag import HippoRAG as HippoRAGModel
 
+        force_remote_llm = os.getenv("REMOTE_LLM", None)
+
         hipporag = HippoRAGModel(
             save_dir=hipporag_dir,
             llm_model_name=self._args.model,
             embedding_model_name=embedding_model,
             llm_base_url='http://localhost:8000/v1',
-        )
+            azure_endpoint=None if force_remote_llm != "1" else (
+                os.getenv("AZURE_OPENAI_ENDPOINT", None)),
+            )
 
         hipporag.index(docs=[doc['content'] for doc in corpus])
 
@@ -118,7 +119,7 @@ class HippoRAG(Agent):
 
         notebooks = []
 
-        for result in results[0]:
+        for result, metadata in zip(results[0], results[2]):
             retrieved_docs = [
                 RetrievedResult(
                     doc_id=self._reverse_doc_map[doc],
@@ -130,6 +131,11 @@ class HippoRAG(Agent):
             notebook = NoteBook()
             notebook.update_sources(retrieved_docs)
             notebook.update_notes(result.answer[:1000])
+            notebook.update_usage_metrics({
+                "prompt_tokens": metadata['prompt_tokens'],
+                "completion_tokens": metadata['completion_tokens'],
+                "total_tokens": metadata['prompt_tokens'] + metadata['completion_tokens'],
+            })
 
             notebooks.append(notebook)
 
