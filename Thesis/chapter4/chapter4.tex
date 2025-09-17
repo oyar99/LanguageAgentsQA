@@ -5,23 +5,36 @@
 
 \section{Retrieval Results}
 
-We first evaluated the retrieval performance of our baseline systems introduced in Section \ref{baselines_sec}. We found that ColBERTV2 consistently demonstrated strong performance across all datasets. In contrast, HippoRAG showed particularly high retrieval performance on MuSiQue, which is attributed to the dataset’s entity-centric design and also supported by the HippoRAG authors \cite{NEURIPS2024_6ddc001d}. However, HippoRAG underperformed on easier datasets relative to simpler methods like BM25. 
+\subsection{Baselines}
+
+We first evaluated the retrieval performance of our baseline systems introduced in Section \ref{baselines_sec}. We found that ColBERTv2 consistently demonstrated strong performance across all datasets. In contrast, HippoRAG showed particularly high retrieval performance on MuSiQue, which is attributed to the dataset’s entity-centric design \cite{NEURIPS2024_6ddc001d}. However, HippoRAG underperformed on easier datasets relative to simpler methods like BM25. 
 
 \noindent We also observe that MuSiQue and 2Wiki have the lowest overall retrieval scores. This is consistent with the design of these benchmarks, which introduce complexity through actual multi-hop reasoning.
 
-\noindent Table \ref{tab:retrieval_results} summarizes retrieval performance across all systems, reporting \textbf{recall@k} for various values of $k$. Importantly, the vast majorify of questions in the datasets require no more than five passages as supporting evidence, which highlights the importance of high recall at low values of $k$ to reduce irrelevant content during the question answering phase.
+\noindent Table \ref{tab:retrieval_results} and Table \ref{tab:avg_retrieval_results} summarize retrieval performance across all baseline systems, reporting \textbf{recall@k} for various values of $k$. Importantly, the vast majority of questions in the datasets require no more than five passages as supporting evidence, which highlights the importance of high recall at low values of $k$ to reduce irrelevant content during the question answering phase.
 
 \input{chapter4/retrieval_results}
+\input{chapter4/avg_retrieval_results}
 
-\noindent Since the designed agents do not generally execute a single search to obtain relevant passages, we only compute average \textbf{recall (R)}, \textbf{precision (P)}, and \textbf{$F_1$} for all queries considering all documents the agent used to derive the final answer. This information is shown in Table \ref{tab:retrieval_results_agents}.
+\subsection{Cognitive Language Agents}
+
+\noindent We evaluated the retrieval performance of the language agent architectures introduced in Section \ref{agents_sec}. Unlike static retrieval baselines, these agents typically execute multiple searches while reasoning about a question, rather than issuing a single query. Consequently, the retrieved results form an unranked set of documents, and we evaluate performance using macro recall (R), macro precision (P), and macro $F_1$. Results are shown in Table \ref{tab:retrieval_results_agents}.
 
 \input{chapter4/retrieval_results_agents}
 
+\noindent Even the simplest agent, the QA Agent, substantially outperforms all baselines on 2Wiki and MuSiQue. On MuSiQue, the QA Agent retrieves an average of $10.9$ unique documents per query, achieving a recall of $69.0$, compared to $60.6$ for ColBERTv2 at $k = 20$. On 2Wiki, the QA Agent retrieves $10.4$ unique documents on average and achieves a recall of $90.3$, representing a $15.8$ point improvement over msmarco-bert-base-dot-v5 at $k = 100$. In contrast, on LoCoMo, the QA Agent performs slightly worse, even when compared against $R@5$. 
+
+\noindent The QA Agent with Re-ranking shows a modest drop in recall relative to the base agent, but its precision improves substantially. This indicates that the second-stage LLM-based retriever effectively prunes distractors, resulting in fewer irrelevant passages to reason over.
+
+\noindent The QA Agent with Pagination exhibits slight improvements in recall across datasets, though the gains are smaller than anticipated. We hypothesize that this is due to inherent limitations of the retriever. In particular, Weller et al.  show empirically that multi-vector retrievers such as ColBERTv2 can only represent a restricted set of top-$k$ rankings, limiting the benefit of retrieving beyond the initial candidate set \cite{weller2025theoreticallimitationsembeddingbasedretrieval}.
+
 \section{Question Answering Results}
+
+\subsection{Baselines}
 
 \noindent Figure \ref{fig:scores_gpt4o} shows the results obtained using GPT-4o-mini across the four datasets using ColBERTV2, msmarco-bert-base-dot-v5, and BM25 retrievers. While performance generally improves with increasing $k$, the gains diminish as more irrelevant details begin to interfere with the model's ability to identify relevant information within its context.
 
-\noindent Interestingly, a performance drop is observed on LoCoMo, HotpotQA, and 2Wiki under the full-context setup, which suggests that excessive context introduces noise. However, MuSiQue, the most complex dataset, benefits modestly from the added information.
+\noindent Interestingly, a performance drop is observed on LoCoMo, HotpotQA, and 2Wiki under the FULL-CONTEXT setup, which suggests that excessive context introduces noise. However, MuSiQue, the most complex dataset, benefits modestly from the added information.
 
 \input{chapter4/scores_gpt4o}
 
@@ -31,12 +44,32 @@ We first evaluated the retrieval performance of our baseline systems introduced 
 
 \noindent We also test o3-mini using $k = 5$. As expected, o3-mini matches or outperforms other models with higher $k$ values, suggesting that reasoning ability plays a key role for MHQA task.
 
-\noindent Finally, we include QA results from HippoRAG \cite{NEURIPS2024_6ddc001d}, which incorporates graph-structured memory. HippoRAG performs especially well on the MuSiQue dataset, likely due to its ability to abstract relationships and reason over structured content.
-
-\noindent Detailed results for all baseline configurations are provided in Table \ref{tab:qa_results}.
+\noindent Detailed results for baseline configurations that use simple retrieval methods are provided in Table \ref{tab:qa_results}.
 
 \input{chapter4/qa_results}
 
-\noindent For the agents architectures, QA results are presented in Table \ref{tab:qa_results_agents}.
+\noindent Finally, we include QA results from HippoRAG \cite{NEURIPS2024_6ddc001d} in Table \ref{tab:qa_hippo_rag_results}, which incorporates graph-structured memory. HippoRAG performs especially well on the MuSiQue dataset, likely due to its ability to abstract relationships and reason over structured content.
+
+\input{chapter4/qa_hipporag}
+
+\subsection{Cognitive Language Agents}
+
+\noindent Table \ref{tab:qa_results_agent} reports the QA performance of the agent architectures. Even the simplest variant, the QA Agent, significantly outperforms the baseline methods on HotpotQA, 2Wiki, and MuSiQue. On 2Wiki, the QA agent even surpasses the the reference setting, where only supporting passages were provided to the LLM (GPT-4o-mini), by $7.4$ points on $R_1$. On HotpotQA and MuSiQue, the agent lags behind the same reference by only $7.0$ and $9.9$ points, respectively. These results underscore the importance of integrating reasoning components into QA systems, particularly given the recall levels of $85.8$ (HotpotQA) and $69.0$ (MuSiQue) that demonstrate that there is still room for better retrieval systems.
 
 \input{chapter4/qa_results_agents}
+
+\noindent The QA Agent with Re-ranking underperforms relative to other agents. While the second-stage LLM filter improves retrieval precision, the corresponding reduction in recall significantly harms downstream QA performance. This suggests that the agent is highly sensitive to recall but more tolerant of lower precision, performing well at filtering irrelevant observations, but struggling when potentially useful evidence is missing.
+
+\noindent The Cognitive QA Agent, which incorporates an episodic memory, shows pronounced gains on MuSiQue. This dataset contains recurring question patterns and supporting evidence, enabling the agent to leverage prior experience and progressively improve over time, even when questions are presented in randomized order. Figure \ref{fig:cog_agent_learn} illustrates this effect, showing cumulative average $R_1$ performance steadily increasing with the number of questions processed.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=.8\textwidth]{images/musique_cognitive_agent.eps}
+    \caption{Cognitive QA Agent Learning on MuSiQue using $R_1$ cumulative average.}
+    \label{fig:cog_agent_learn}
+\end{figure}
+
+\noindent To assess generalization, we further compare the QA Agent and the Cognitive QA Agent on samples not included in the original evaluation sets. For each dataset, we evaluate on 1000 additional questions. During this evaluation, the cognitive agent's memory is frozen, preventing the addition of new traces and forcing the model to rely exclusively on prior learning. Results, in Table \ref{tab:qa_results_agent_v2}, show no significant improvement compared to the baseline QA Agent, suggesting that while the cognitive architecture does not generalize well, it does maintain stable performance.
+
+\input{chapter4/qa_results_agents_cognitive}
+

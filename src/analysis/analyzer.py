@@ -288,6 +288,81 @@ def create_whole_system_plot(scores, save_path="rouge1_whole_system.eps",
     Logger().info(
         f"Whole system learning progression plot saved to: {save_path}")
 
+
+def create_learning_trend_eps_only(scores, save_path="learning_trend_chart.eps",
+                                   score_type="ROUGE-1", mode="whole"):
+    """
+    Create only the Learning Trend Analysis chart (cumulative averages) without title
+    and trend dotted line, saved as EPS format.
+
+    Args:
+        scores (list): List of scores in chronological order
+        save_path (str): Path to save the EPS image
+        score_type (str): Type of score for labeling
+        mode (str): Analysis mode ("whole" or "2-agent")
+    """
+    if not scores:
+        Logger().info("No scores to plot for Learning Trend Analysis EPS.")
+        return
+
+    # Create a single plot figure
+    plt.figure(figsize=(10, 6))
+
+    if mode == "2-agent":
+        # Split scores for two agents
+        agent1_split = len(scores) // 2
+        
+        if len(scores) > agent1_split:
+            agent1_scores = scores[:agent1_split]
+            agent2_scores = scores[agent1_split:]
+
+            # Create question numbers for each agent
+            agent1_questions = list(range(1, len(agent1_scores) + 1))
+            agent2_questions = list(
+                range(agent1_split + 1, agent1_split + 1 + len(agent2_scores)))
+        else:
+            # If we don't have enough scores, treat all as agent 1
+            agent1_scores = scores
+            agent2_scores = []
+            agent1_questions = list(range(1, len(agent1_scores) + 1))
+            agent2_questions = []
+
+        # Calculate cumulative averages for each agent
+        if agent1_scores:
+            _, _, agent1_cumulative = calculate_rolling_averages(agent1_scores, 10)
+            plt.plot(agent1_questions, agent1_cumulative, color='cornflowerblue',
+                     linewidth=2, label='Agent 1 Cumulative')
+
+        if agent2_scores:
+            _, _, agent2_cumulative = calculate_rolling_averages(agent2_scores, 10)
+            plt.plot(agent2_questions, agent2_cumulative, color='lightcoral',
+                     linewidth=2, label='Agent 2 Cumulative')
+
+        # Add vertical line to separate agents
+        if len(scores) > agent1_split:
+            plt.axvline(x=agent1_split, color='lightgray', linestyle='--',
+                        alpha=0.8, label='Agent Switch')
+
+    else:
+        # Whole system mode
+        question_numbers = list(range(1, len(scores) + 1))
+        _, _, cumulative = calculate_rolling_averages(scores, 10)
+        plt.plot(question_numbers, cumulative, color='tomato',
+                 linewidth=2, label='Cumulative Average')
+
+    plt.xlabel('Question Number')
+    plt.ylabel(f'Cumulative Average {score_type} Score')
+    # Note: No title is added as per requirements
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(save_path, format='eps', dpi=300, bbox_inches='tight')
+    plt.close()
+
+    Logger().info(f"Learning Trend Analysis EPS chart saved to: {save_path}")
+
+
 # pylint: disable=too-many-locals,too-many-branches,too-many-statements
 def create_learning_progression_plot(scores, save_path="rouge1_learning_progression.eps",
                                      score_type="ROUGE-1"):
@@ -826,6 +901,11 @@ def main():
     else:
         # For whole system, create a simpler single-system plot
         create_whole_system_plot(scores, plot_filename, score_type)
+
+    # Create additional EPS-only Learning Trend Analysis chart without title and trend line
+    eps_filename = os.path.join(output_dir,
+                                f"learning_trend_chart_{dataset_name}_{mode_suffix}_{timestamp}.eps")
+    create_learning_trend_eps_only(scores, eps_filename, score_type, mode)
 
     # Analyze learning metrics for the complete dataset
     Logger().info("\n" + "=" * 60)

@@ -1,0 +1,20 @@
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{lccccc}
+            \toprule
+            & \multicolumn{5}{c}{\textbf{Average}} \\
+            \cmidrule(lr){2-6}
+             K & \small 2 & \small 5 & \small 10 & \small 20 & \small 100 \\
+            \midrule
+            \small BM25 & 41.8 & 53.0 & 60.7 & 66.7 & 76.8 \\
+            \small msmarco-bert &
+\underline{47.4} & \underline{57.7} & \underline{63.7} & \underline{68.9} & \underline{79.4} \\
+            \small ColBERTv2 & \textbf{51.3} & \textbf{62.4} & \textbf{68.4} & \textbf{73.3} & \textbf{81.7} \\
+            \midrule
+            \small HippoRAG (Qwen2.5-14B) & 42.7 & 54.1 & 61.0 & 66.5 & 76.5 \\
+            \small HippoRAG (GPT-4o-mini) & - & - & - & - & - \\
+            \bottomrule
+        \end{tabular}
+    \caption{\small Average baselines retrieval performance.}
+    \label{tab:avg_retrieval_results}
+\end{table}

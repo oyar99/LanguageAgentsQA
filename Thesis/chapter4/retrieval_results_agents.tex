@@ -3,14 +3,14 @@
     \adjustbox{max width=\textwidth}{
         \begin{tabular}{lccccccccccccccccccccc}
             \toprule
-            & \multicolumn{3}{c}{\scriptsize \textbf{LoCoMo}} & \multicolumn{3}{c}{\scriptsize \textbf{HotpotQA}} & \multicolumn{3}{c}{\scriptsize \textbf{2Wiki}} & \multicolumn{3}{c}{\scriptsize \textbf{MuSiQue}} & \multicolumn{3}{c}{\scriptsize \textbf{Average}} \\
+            & \multicolumn{3}{c}{\textbf{LoCoMo}} & \multicolumn{3}{c}{\textbf{HotpotQA}} & \multicolumn{3}{c}{\textbf{2Wiki}} & \multicolumn{3}{c}{\textbf{MuSiQue}} & \multicolumn{3}{c}{ \textbf{Average}} \\
             \cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10} \cmidrule(lr){11-13} \cmidrule(lr){14-16}
-             & \scriptsize R & \scriptsize P & \scriptsize $F_1$ & \scriptsize R & \scriptsize P & \scriptsize $F_1$ & \scriptsize R & \scriptsize P & \scriptsize $F_1$ & \scriptsize R & \scriptsize P & \scriptsize $F_1$ & \scriptsize R & \scriptsize P & \scriptsize $F_1$ \\
+             & R & P & $F_1$ & R & P & $F_1$ & R & P & $F_1$ & R & P & $F_1$ & R & P & $F_1$ \\
              \midrule
             \scriptsize QA Agent & 62.1 & 15.4 & 23.7 & 85.8 & 23.9 & 36.6 & 90.3 & 21.6 & 34.4 & 69.0 & 17.7 & 27.5 & 76.8 & 19.7 & 30.6 \\
-            \scriptsize Re-Ranking Agent & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
-            \scriptsize Hybrid QA Agent & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
-            \scriptsize Multi-agent Reflection & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
+            \scriptsize QA Agent - Re-ranking & 60.7 & 28.4 & 35.4 & 82.3 & 61.3 & 65.2 & 87.5 & 73.6 & 76.9 & 62.8 & 49.2 & 51.0 & 73.3 & 53.1 & 57.1 \\
+            \scriptsize QA Agent - Pagination & 63.6 & 15.2 & 23.5 & 86.1 & 23.2 & 35.6 & - & - & - & 69.0 & 16.5 & 25.9 & - & - & - \\
+            \scriptsize Cognitive QA Agent & 62.6 & 15.6 & 24.0 & 83.6 & 24.9 & 37.6 & - & - & - & 73.2 & 18.8 & 29.4 & - & - & - \\
             \bottomrule
         \end{tabular}
     }

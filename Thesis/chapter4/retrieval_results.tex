@@ -1,34 +1,23 @@
 \begin{table}[ht]
     \centering
-    \small
-    \resizebox{1.1\textwidth}{!}{
-        \begin{tabular}{lccccccccccccccccccccccccc}
+    \setlength{\tabcolsep}{3pt}
+    \resizebox{\textwidth}{!}{
+        \begin{tabular}{lcccccccccccccccccccc}
             \toprule
-            & \multicolumn{5}{c}{\textbf{LoCoMo}} & \multicolumn{5}{c}{\textbf{HotpotQA}} & \multicolumn{5}{c}{\textbf{2Wiki}} & \multicolumn{5}{c}{\textbf{MuSiQue}} & \multicolumn{5}{c}{\textbf{Average}} \\
-            \cmidrule(lr){2-6} \cmidrule(lr){7-11} \cmidrule(lr){12-16} \cmidrule(lr){17-21} \cmidrule(lr){22-26}
-             & \scriptsize R@2 & \scriptsize R@5 & \scriptsize R@10 & \scriptsize R@20 & \scriptsize R@100 & \scriptsize R@2 & \scriptsize R@5 & \scriptsize R@10 & \scriptsize R@20 & \scriptsize R@100 & \scriptsize R@2 & \scriptsize R@5 & \scriptsize R@10 & \scriptsize R@20 & \scriptsize R@100 & \scriptsize R@2 & \scriptsize R@5 & \scriptsize R@10 & \scriptsize R@20 & \scriptsize R@100 & \scriptsize R@2 & \scriptsize R@5 & \scriptsize R@10 & \scriptsize R@20 & \scriptsize R@100 \\
-             \midrule
-             \scriptsize $\text{Default}^1$ & 94.4 & 99.5 & 99.9 & 100.0 & 100.0 & 100.0 & 100.0 & 100.0 & 100.0 & 100.0 & 89.1 & 100.0 & 100.0 & 100.0 & 100.0 & 81.1 & 100.0 & 100.0 & 100.0 & 100.0 & 91.2 & 99.9 & 100.0 & 100.0 & 100.0 \\
+            & \multicolumn{5}{c}{\textbf{LoCoMo}} & \multicolumn{5}{c}{\textbf{HotpotQA}} & \multicolumn{5}{c}{\textbf{2Wiki}} & \multicolumn{5}{c}{\textbf{MuSiQue}}\\
+            \cmidrule(lr){2-6} \cmidrule(lr){7-11} \cmidrule(lr){12-16} \cmidrule(lr){17-21}
+             K & 2 & 5 & 10 & 20 & 100 & 2 & 5 & 10 & 20 & 100 & 2 & 5 & 10 & 20 & 100 & 2 & 5 & 10 & 20 & 100 \\
             \midrule
             \scriptsize BM25 & 41.6 & 52.7 & 60.3 & 66.3 & 78.6 & 50.7 & 63.6 & 74.6 & 
-\underline{83.1} & \textbf{91.2} & 45.6 & 57.2 & 62.8 & 66.4 & 72.7 & 29.2 & 38.3 & 45.1 & 50.8 & 64.7 & 41.8 & 53.0 & 60.7 & 66.7 & 76.8 \\
-            \scriptsize $\text{MSMarco-BERT}^2$ & \underline{42.5} & \underline{54.5} & \underline{62.2} & \underline{70.0} & \underline{86.0} & \underline{56.2} & 67.0 & 72.5 & 76.8 & 84.8 & \textbf{54.3} & \underline{62.7} & \underline{66.0} & \underline{68.4} & \underline{73.0} & \textbf{36.5} & \textbf{46.4} & \textbf{54.0} & \textbf{60.6} & \textbf{73.7} &
-\underline{47.4} & \underline{57.7} & \underline{63.7} & \underline{68.9} & \underline{79.4} \\
-            \scriptsize ColBERTV2 & \textbf{54.8} & \textbf{66.6} & \textbf{73.5} & \textbf{80.0} & \textbf{89.6} & \textbf{61.8} & \textbf{74.8} & \textbf{81.0} & \textbf{85.3} & \textbf{91.2} & \underline{53.6} & \textbf{62.8} & \textbf{67.1} & \textbf{69.9} & \textbf{74.5} & 35.1 & 45.4 & 52.1 & 57.7 & 71.4 & \textbf{51.3} & \textbf{62.4} & \textbf{68.4} & \textbf{73.3} & \textbf{81.7} \\
-            %\scriptsize LLM (re-ranker)\cite{santhanam-etal-2022-colbertv2}\cite{sun-etal-2023-chatgpt} & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
+\underline{83.1} & \textbf{91.2} & 45.6 & 57.2 & 62.8 & 66.4 & 72.7 & 29.2 & 38.3 & 45.1 & 50.8 & 64.7 \\
+            \scriptsize msmarco-bert & \underline{42.5} & \underline{54.5} & \underline{62.2} & \underline{70.0} & \underline{86.0} & \underline{56.2} & 67.0 & 72.5 & 76.8 & 84.8 & \textbf{54.3} & \underline{62.7} & \underline{66.0} & \underline{68.4} & \underline{73.0} & \underline{36.5} & \underline{46.4} & \underline{54.0} & \underline{60.6} & \underline{73.7} \\
+            \scriptsize ColBERTv2 & \textbf{54.8} & \textbf{66.6} & \textbf{73.5} & \textbf{80.0} & \textbf{89.6} & \textbf{61.8} & \textbf{74.8} & \textbf{81.0} & \textbf{85.3} & \textbf{91.2} & \underline{53.6} & \textbf{62.8} & \textbf{67.1} & \textbf{69.9} & \textbf{74.5} & 35.1 & 45.4 & 52.1 & 57.7 & 71.4 \\
             \midrule
-            \scriptsize HippoRAG & - & - & - & - & - & 53.4 & \underline{67.8} & \underline{75.5} & 80.5 & \underline{88.5} & 39.6 & 48.3 & 54.0 & 59.0 & 68.2 & \underline{35.2} & \underline{46.1} & \underline{53.6} & \underline{60.1} & \underline{72.7} & - & - & - & - & - \\
-            %\midrule
-            %\scriptsize System I & - & - & - & - & - & - & - & -  & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
-            %\scriptsize System II & - & - & - & - & - & - & - & -  & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
-            %\scriptsize System III & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - \\
+            \scriptsize HippoRAG & - & - & - & - & - & 53.4 & \underline{67.8} & \underline{75.5} & 80.5 & \underline{88.5} & 39.6 & 48.3 & 54.0 & 59.0 & 68.2 & 35.2 & 46.1 & 53.6 & 60.1 & 72.7 \\
+            \scriptsize HippoRAG & - & - & - & - & - & - & - & - & - & - & - & - & - & - & - & \textbf{38.4} & \textbf{50.2} & \textbf{58.1} & \textbf{64.7} & \textbf{76.4} \\
             \bottomrule
-            \multicolumn{16}{l}{\rule{0pt}{1.25em} $^1$ \footnotesize 
- Retrieved passages are always relevant.} \\
-            \multicolumn{16}{l}{\rule{0pt}{0em} $^2$ \footnotesize 
- BERT embeddings trained on question answer pairs from the MS Marco dataset.}
         \end{tabular}
     }
-    \caption{\small Retrieval performance.}
+    \caption{\small Baselines retrieval performance.}
     \label{tab:retrieval_results}
 \end{table}

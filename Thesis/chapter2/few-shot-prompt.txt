@@ -1,0 +1,5 @@
+Question: Lena has 3 boxes of chocolate bars. Each box contains 12 chocolate bars. She eats 4 bars, and then gives half of what remains to her friend. Later, her friend eats 4 bars. How many chocolate bars does Lena's friend have now?
+
+Answer: Lena starts with 3 boxes with 12 chocolate bars each, so she initially has 3 x 12 = 36 bars. She eats 4, so she now has 32 bars. She gives half of that to her friend, 32 / 2 = 16 bars. Her friend eats 4 bars, so her friend now has 16 - 4 = 12 bars. The answer is 12.
+
+Question: A farmer has 24 apples. He packs them equally into baskets of 5 apples each. The remaining apples he eats. Then, he buys 2 more baskets, each with 6 apples. How many apples does the farmer have now?

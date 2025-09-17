@@ -1,0 +1,9 @@
+{
+    "question": <question content>,
+    "ground_truth": <the actual correct answer provided as feedback when the agent outputs a final answer>,
+    "final_answer": <the agent's answer>,
+    "messages": <the reasoning chain executed by the agent>,
+    "correct_reasoning_traces": <the reasoning traces produced after reflecting on the correct answer and supporting evidence>,
+    "is_correct": <whether the answer was considered correct by the evaluator tool>,
+    "rouge_score": <the score produced by the evaluator tool>
+}
