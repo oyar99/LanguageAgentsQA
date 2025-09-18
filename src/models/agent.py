@@ -601,12 +601,11 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
         Logger().error(f"Invalid action format: {action}")
         raise ValueError(f"Invalid action format: {action}")
 
-    # pylint: disable-next=too-many-arguments,too-many-positional-arguments
     def _reflect(
         self,
         reflector: Reflector,
         current_step: Dict[str, Any]
-    ) -> Tuple[Optional[str], Dict[str, int]]:
+    ) -> bool:
         """
         Reflect on the current reasoning step using the reflector.
 
@@ -618,19 +617,8 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
         Returns:
             Tuple[Optional[str], Dict[str, int]]: (feedback_if_any, usage_metrics)
         """
-        usage_metrics = {
-            "completion_tokens": 0,
-            "prompt_tokens": 0,
-            "total_tokens": 0
-        }
-
         # Get reflection feedback from the reflector
-        reflect_feedback, usage_metrics = reflector.reflect_on_step(current_step)
-
-        if reflect_feedback:
-            return reflect_feedback, usage_metrics
-
-        return None, usage_metrics
+        return reflector.reflect_on_step(current_step)
 
     def _turn_from_response_factory(self, structured_response: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -682,7 +670,6 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
 
         iteration = 0
         final_answer = None
-        best_final_answer = None
 
         usage_metrics = {
             "completion_tokens": 0,
@@ -748,44 +735,25 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
             if iteration == self._max_iterations and final_answer is None:
                 Logger().warn(
                     f"Max iterations reached for question: {question} without a final answer.")
-                final_answer = best_final_answer if best_final_answer else "N/A"
+                final_answer = "N/A"
                 break
 
             turn = {'thought': thought, 'actions': actions,
                     'observations': [], 'final_answer': final_answer}
 
-            if self._enable_interleave_reflection and not prev_iteration_feedback:
-                # Find latest message with observations in stm
-                prev_obs = []
-
-                for past_turn in reversed(stm):
-                    past_turn_data = json.loads(past_turn)
-                    if past_turn_data.get('observations'):
-                        prev_obs = past_turn_data['observations']
-                        break
-
+            if self._enable_interleave_reflection and not prev_iteration_feedback and not final_answer:
                 # Create step with latest observations and current thought
                 reflection_step = {
-                    'observations': prev_obs,
                     'thought': thought,
-                    'final_answer': final_answer
                 }
 
                 # Get reflection feedback on the current turn
-                reflect_feedback, reflection_usage_metrics = self._reflect(
+                reflect_feedback = self._reflect(
                     reflector,
                     reflection_step,
                 )
 
-                # Update usage metrics with reflection metrics
-                usage_metrics["completion_tokens"] += reflection_usage_metrics.get(
-                    "completion_tokens", 0)
-                usage_metrics["prompt_tokens"] += reflection_usage_metrics.get(
-                    "prompt_tokens", 0)
-                usage_metrics["total_tokens"] += reflection_usage_metrics.get(
-                    "total_tokens", 0)
-
-                # If we have reflection feedback, let the main agent decide how to use it
+                # If we have reflection feedback, self-reflect and potentially adjust the approach
                 if reflect_feedback:
                     # Save the current turn to STM first
                     filtered_turn = self._filtered_turn(turn)
@@ -795,15 +763,11 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
 
                     # Add reflection feedback to the conversation
                     messages.append(
-                        {"role": "user", "content": reflect_feedback})
-                    messages.append(
                         {"role": "system", "content": REACT_AGENT_REFLECTION_PROMPT})
 
                     # Let the agent process the feedback and potentially update its approach
                     # The agent can choose to continue with actions or provide a final answer
                     prev_iteration_feedback = True
-                    best_final_answer = final_answer if final_answer else best_final_answer
-                    final_answer = None
                     continue
 
             # Mark that the current iteration did not have feedback
@@ -847,8 +811,16 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
             stm.append(json.dumps(filtered_turn))
             iteration += 1
 
+        # Update usage metrics with reflection metrics
+        usage_metrics["completion_tokens"] += reflector.usage_metrics.get(
+            "completion_tokens", 0)
+        usage_metrics["prompt_tokens"] += reflector.usage_metrics.get(
+            "prompt_tokens", 0)
+        usage_metrics["total_tokens"] += reflector.usage_metrics.get(
+            "total_tokens", 0)
+
         if final_answer is None:
-            final_answer = best_final_answer if best_final_answer else "N/A"
+            final_answer = "N/A"
 
         Logger().info(
             f"Final answer for question '{question}': {final_answer}")
@@ -968,9 +940,10 @@ Take a moment to revisit the question, reflect on the information you have gathe
 Unless strictly necessary, you will answer with 'N/A' if you definitely cannot provide an answer.
 '''
 
-REACT_AGENT_REFLECTION_PROMPT = '''You should carefully review your previous response and reasoning in light of the \
-provided user feedback. Use the feedback provided by the user to revise your reasoning, and correct any mistakes or omissions \
-in your original reasoning. Provide the next intermediate response or final answer with your updated reasoning incorporating the feedback.
-
-Ensure that your output strictly follows the same response format as before.
+REACT_AGENT_REFLECTION_PROMPT = '''Since you are not making significant progress towards the final answer, \
+you are likely to be omitting important information or making mistakes in your reasoning. \
+Analyze the observations you have made so far, and identify any plausible assumptions you can make from them to move on towards the next step. \
+Plausible assumptions are information that may not be explicitly stated in the observations, but can be reasonably inferred from them. \
+Do not continue to search for the same information again. Instead, use these assumptions to guide your next steps. Assumption should be based \
+only on the retrieved information. \
 '''

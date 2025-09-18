@@ -9,7 +9,6 @@ from agents.default.default import Default
 from agents.dense.dense import Dense
 from agents.hippo_rag.hippo_rag import HippoRAG
 from agents.oracle.oracle import Oracle
-from agents.react_agent.react_agent import ReactAgent
 from agents.react_agent_custom.react_agent_custom import ReactAgentCustom
 from agents.lexical_semantic_agent.lexical_semantic_agent import LexicalSemanticAgent
 from agents.react_agent_hippo.react_agent_hippo import ReactAgentHippo
@@ -55,7 +54,6 @@ class Orchestrator:
             'colbertv2': ColbertV2,
             'colbertv2_rerank': ColbertV2Reranker,
             'hippo': HippoRAG,
-            'react': ReactAgent,
             'react_custom': ReactAgentCustom,
             'react_hippo': ReactAgentHippo,
             'lexical_semantic': LexicalSemanticAgent,
