@@ -220,7 +220,7 @@ class MultiprocessingSearchAgent(Agent, ABC):
     two resources to the worker processes: a lock and a searcher accesible via the utils.agent_worker module.
     """
 
-    def __init__(self, args, cores=16):
+    def __init__(self, args, cores=10):
         super().__init__(args)
         self._cores = cores
 
@@ -397,6 +397,53 @@ class MultiprocessingStatefulSearchAgent(Agent, ABC):
             "Batch reasoning is not implemented for MultiprocessingSearchAgent.")
 
 
+class SingleProcessAgent(Agent, ABC):
+    """
+    An abstract class representing an agent that runs in a single process.
+    """
+
+    def multiprocessing_reason(self, questions: list[str]) -> list[NoteBook]:
+        """
+        Processes the questions sequentially in a single process.
+
+        Args:
+            question (list[str]): the given questions
+        Returns:
+            notebook (list[Notebook]): the detailed findings to help answer all questions (context)
+        """
+        results = []
+        for question in questions:
+            try:
+                notebook = self.reason(question)
+                results.append(notebook)
+            # pylint: disable=broad-exception-caught
+            except Exception as e:
+                Logger().error(f"Error processing question '{question}': {e}")
+                Logger().error(f"Traceback: {traceback.format_exc()}")
+
+                # Create error notebook
+                error_notebook = NoteBook()
+                error_notebook.update_notes("N/A")
+                error_notebook.update_usage_metrics({
+                    "completion_tokens": 0,
+                    "prompt_tokens": 0,
+                    "total_tokens": 0
+                })
+                results.append(error_notebook)
+
+        return results
+
+    def batch_reason(self, _: list[QuestionAnswer]) -> list[NoteBook]:  # type: ignore
+        """
+        Uses its question index to answer the questions.
+
+        Raises:
+            NotImplementedError: Batch reasoning is not implemented for SingleProcessingSearchAgent.
+        """
+        raise NotImplementedError(
+            "Batch reasoning is not implemented for SingleProcessingSearchAgent.")
+
+
 class SelfContainedAgent(Agent, ABC):
     """
     An abstract class representing a self-contained agent that can answer questions directly.
@@ -413,6 +460,10 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
     An abstract class representing an intelligent agent that can reason over a dataset.
     It extends the Agent class and provides additional functionality for reasoning.
 
+    The agent supports interleaved reflection during reasoning, where each step can be 
+    evaluated by a reflector that provides feedback to improve the reasoning process.
+    The main agent decides how to integrate this feedback into its reasoning chain.
+
     Examples can be provided to help the agent understand how it can best use the available tools for reasoning.
     Please make sure the examples adhere to the ReACT framework and are formatted correctly for better results.
     """
@@ -420,7 +471,6 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
     def __init__(self, actions: Dict[str, Action], examples: str, args):
         SelfContainedAgent.__init__(self, args)
         self._max_iterations = 8
-        self._enable_reflection = False
         self._enable_interleave_reflection = False
 
         if len(actions) == 0:
@@ -555,90 +605,32 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
     def _reflect(
         self,
         reflector: Reflector,
-        stm: list[str],
-        messages: list[Dict[str, str]],
-        iteration: int,
-        force_final_answer: bool = False
-    ) -> Tuple[str, Optional[Dict[str, str]], Dict[str, str]]:
+        current_step: Dict[str, Any]
+    ) -> Tuple[Optional[str], Dict[str, int]]:
         """
-        Reflect on the current state of the reasoning process with a multi-agent architecture
+        Reflect on the current reasoning step using the reflector.
 
         Args:
-            question (str): The original question being addressed.
-            stm (list[str]): The current state of the reasoning process, typically a list of \
-thoughts and actions taken so far.
-            messages (list[Dict[str, str]]): The messages exchanged during the reasoning process, \
-including user inputs and system responses.
+            reflector (Reflector): The reflector instance to use for reflection.
+            current_step (Dict[str, Any]): The current reasoning step to reflect on.
+            iteration (int): The current iteration number for logging purposes.
 
         Returns:
-            Optional[str]: Feedback, or None if current reasoning process is okay
+            Tuple[Optional[str], Dict[str, int]]: (feedback_if_any, usage_metrics)
         """
-        reflect_feedback = reflector.reflect_on_chain(
-            [json.loads(s) for s in stm])
-
         usage_metrics = {
             "completion_tokens": 0,
             "prompt_tokens": 0,
             "total_tokens": 0
         }
 
-        reflection_usage_metrics = reflector.get_usage_metrics()
-
-        usage_metrics["completion_tokens"] += reflection_usage_metrics.get(
-            "completion_tokens", 0)
-        usage_metrics["prompt_tokens"] += reflection_usage_metrics.get(
-            "prompt_tokens", 0)
-        usage_metrics["total_tokens"] += reflection_usage_metrics.get(
-            "total_tokens", 0)
+        # Get reflection feedback from the reflector
+        reflect_feedback, usage_metrics = reflector.reflect_on_step(current_step)
 
         if reflect_feedback:
-            Logger().debug(
-                f"Interleaved reflection feedback: {reflect_feedback}")
+            return reflect_feedback, usage_metrics
 
-            new_messages = messages.copy()
-            # TODO: This is a hack to add the state of the reasoning process to the messages.
-            # Need to handle this better once POC is working
-            new_messages.append(
-                {"role": "system", "content": json.dumps(stm[0])})
-            new_messages.append(
-                {"role": "user", "content": reflect_feedback})
-            new_messages.append(
-                {"role": "system", "content":
-                         REACT_AGENT_REFLECTION_PROMPT
-                         if not force_final_answer else REACT_AGENT_LAST_ITERATION_PROMPT})
-
-            open_ai_request = {
-                "custom_id": f"react_interleaved_reflection_{iteration}",
-                "model": self._args.model,
-                "messages": new_messages,
-                "temperature": default_job_args['temperature']
-                if supports_temperature_param(self._args.model) else None,
-                "frequency_penalty": default_job_args['frequency_penalty'],
-                "presence_penalty": default_job_args['presence_penalty'],
-                "max_completion_tokens": 1000,
-            }
-
-            Logger().debug(
-                f"Sending interleaved reflection request: {open_ai_request}")
-
-            result = chat_completions([open_ai_request])[0][0]
-
-            # Update usage metrics
-            usage_metrics["completion_tokens"] += result.usage.completion_tokens
-            usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
-            usage_metrics["total_tokens"] += result.usage.total_tokens
-
-            response_content = result.choices[0].message.content.strip()
-
-            Logger().debug(f"Model response: {response_content}")
-
-            # Parse the structured response
-            structured_response = parse_structured_response(
-                response_content)
-
-            return reflect_feedback, structured_response, usage_metrics
-
-        return None, None, usage_metrics
+        return None, usage_metrics
 
     def _turn_from_response_factory(self, structured_response: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -686,9 +678,11 @@ including user inputs and system responses.
 
         stm = []
         sources: Dict[str, List[int]] = {}
+        prev_iteration_feedback = False
 
         iteration = 0
         final_answer = None
+        best_final_answer = None
 
         usage_metrics = {
             "completion_tokens": 0,
@@ -706,10 +700,9 @@ including user inputs and system responses.
         while final_answer is None:
             Logger().debug(
                 f"Iteration {iteration + 1} for question: {question}")
-            iteration += 1
 
             # If this is the last iteration, we force the model to provide a final answer
-            if iteration == self._max_iterations:
+            if iteration == self._max_iterations - 1:
                 messages.append(
                     {"role": "system", "content": REACT_AGENT_LAST_ITERATION_PROMPT})
 
@@ -742,7 +735,7 @@ including user inputs and system responses.
                 response_content)
 
             if structured_response is None:
-                # If parsing failed, give up. In the future, we will implement self-reflection to improve the response.
+                # If parsing failed, give up
                 break
 
             turn = self._turn_from_response_factory(structured_response)
@@ -755,18 +748,33 @@ including user inputs and system responses.
             if iteration == self._max_iterations and final_answer is None:
                 Logger().warn(
                     f"Max iterations reached for question: {question} without a final answer.")
-                final_answer = "N/A"
+                final_answer = best_final_answer if best_final_answer else "N/A"
                 break
 
             turn = {'thought': thought, 'actions': actions,
                     'observations': [], 'final_answer': final_answer}
 
-            if self._enable_interleave_reflection:
-                reflect_feedback, structured_response_with_feedback, reflection_usage_metrics = self._reflect(
+            if self._enable_interleave_reflection and not prev_iteration_feedback:
+                # Find latest message with observations in stm
+                prev_obs = []
+
+                for past_turn in reversed(stm):
+                    past_turn_data = json.loads(past_turn)
+                    if past_turn_data.get('observations'):
+                        prev_obs = past_turn_data['observations']
+                        break
+
+                # Create step with latest observations and current thought
+                reflection_step = {
+                    'observations': prev_obs,
+                    'thought': thought,
+                    'final_answer': final_answer
+                }
+
+                # Get reflection feedback on the current turn
+                reflect_feedback, reflection_usage_metrics = self._reflect(
                     reflector,
-                    [json.dumps(self._filtered_turn(turn))],
-                    messages,
-                    iteration,
+                    reflection_step,
                 )
 
                 # Update usage metrics with reflection metrics
@@ -777,36 +785,29 @@ including user inputs and system responses.
                 usage_metrics["total_tokens"] += reflection_usage_metrics.get(
                     "total_tokens", 0)
 
-                if structured_response_with_feedback:
-                    structured_response = structured_response_with_feedback
-
-                    # Save previous turn to STM
+                # If we have reflection feedback, let the main agent decide how to use it
+                if reflect_feedback:
+                    # Save the current turn to STM first
                     filtered_turn = self._filtered_turn(turn)
                     messages.append(
                         {"role": "system", "content": json.dumps(filtered_turn)})
                     stm.append(json.dumps(filtered_turn))
 
-                    # Append feedback in conversation
+                    # Add reflection feedback to the conversation
                     messages.append(
                         {"role": "user", "content": reflect_feedback})
                     messages.append(
-                        {"role": "system", "content":
-                         REACT_AGENT_REFLECTION_PROMPT
-                         if iteration != self._max_iterations else REACT_AGENT_LAST_ITERATION_PROMPT})
+                        {"role": "system", "content": REACT_AGENT_REFLECTION_PROMPT})
 
-                    # Update turn with feedback
-                    turn = self._turn_from_response_factory(
-                        structured_response)
-                    thought = turn["thought"]
-                    actions = turn["actions"]
-                    final_answer = turn["final_answer"]
+                    # Let the agent process the feedback and potentially update its approach
+                    # The agent can choose to continue with actions or provide a final answer
+                    prev_iteration_feedback = True
+                    best_final_answer = final_answer if final_answer else best_final_answer
+                    final_answer = None
+                    continue
 
-                    # If this was the last iteration, and we do not have a final answer, we force it to N/A
-                    if iteration == self._max_iterations and final_answer is None:
-                        Logger().warn(
-                            f"Max iterations reached for question: {question} without a final answer.")
-                        final_answer = "N/A"
-                        break
+            # Mark that the current iteration did not have feedback
+            prev_iteration_feedback = False
 
             for action_index, action in enumerate(actions, 1):
                 # Parse action string to extract function name and arguments
@@ -840,35 +841,14 @@ including user inputs and system responses.
                     folder_id = f"iter_{iteration}_action_{action_index}"
                     sources[folder_id] = list(action_sources)
 
-            # Update the reflector with the observations
-            reflector.update_observations(turn['observations'])
-
             filtered_turn = self._filtered_turn(turn)
             messages.append(
                 {"role": "system", "content": json.dumps(filtered_turn)})
             stm.append(json.dumps(filtered_turn))
+            iteration += 1
 
         if final_answer is None:
-            final_answer = "N/A"
-
-        if self._enable_reflection:
-            _, structured_response_with_feedback, reflection_usage_metrics = self._reflect(
-                reflector, stm, messages, iteration, force_final_answer=True)
-
-            usage_metrics["completion_tokens"] += reflection_usage_metrics.get(
-                "completion_tokens", 0)
-            usage_metrics["prompt_tokens"] += reflection_usage_metrics.get(
-                "prompt_tokens", 0)
-            usage_metrics["total_tokens"] += reflection_usage_metrics.get(
-                "total_tokens", 0)
-
-            new_final_answer = structured_response_with_feedback.get(
-                "final_answer", None)
-
-            if new_final_answer is not None and str(new_final_answer).strip() != "N/A":
-                # Only update answer if it is not "N/A"
-                # We prefer to keep the possibly incomplete answer from the original iteration than no answer at all
-                final_answer = new_final_answer
+            final_answer = best_final_answer if best_final_answer else "N/A"
 
         Logger().info(
             f"Final answer for question '{question}': {final_answer}")
@@ -896,6 +876,16 @@ including user inputs and system responses.
         notebook.update_messages(messages)
 
         return notebook
+
+
+class SingleProcessIntelligentAgent(BaseIntelligentAgent, SingleProcessAgent, ABC):
+    """
+    A class representing a single-process intelligent agent that uses a single-process.
+    """
+
+    def __init__(self, actions: Dict[str, Action], examples: str, args):
+        SingleProcessAgent.__init__(self, args)
+        BaseIntelligentAgent.__init__(self, actions, examples, args)
 
 
 class IntelligentAgent(BaseIntelligentAgent, MultiprocessingSearchAgent, ABC):
@@ -978,14 +968,9 @@ Take a moment to revisit the question, reflect on the information you have gathe
 Unless strictly necessary, you will answer with 'N/A' if you definitely cannot provide an answer.
 '''
 
-REACT_AGENT_REFLECTION_PROMPT = '''You should reflect on your previous response and reasoning process \
-based on the provided feedback. Please correct any mistakes, improve your reasoning, 
-and provide the next intermediate or final answer following the same response format as before.
-'''
+REACT_AGENT_REFLECTION_PROMPT = '''You should carefully review your previous response and reasoning in light of the \
+provided user feedback. Use the feedback provided by the user to revise your reasoning, and correct any mistakes or omissions \
+in your original reasoning. Provide the next intermediate response or final answer with your updated reasoning incorporating the feedback.
 
-REACT_AGENT_SELF_REFLECT_PROMPT = '''Based on the provided feedback, \
-you should reflect on your previous response and reasoning process. \
-Now provide a final answer that takes into account the feedback and any additional insights you have gained. \
-Make sure to follow the same response format as before, including the thought process and final answer.
-You should not include any additional commentary, explanations, or notes in your final response.
+Ensure that your output strictly follows the same response format as before.
 '''

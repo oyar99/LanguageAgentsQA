@@ -31,10 +31,13 @@ keywords related to the question.",
                 self._search_documents
             )
         }
-        self._enable_pruning = False
         prompt_examples = PROMPT_EXAMPLE_TOOLS_LOCOMO if args.dataset == 'locomo' else PROMPT_EXAMPLES_TOOLS
         super().__init__(actions, prompt_examples, args)
-        self._enable_reflection = False
+
+        agent_args = args.agent_args or {}
+        self._enable_pruning = agent_args.get('pruning', False)
+        self._enable_interleave_reflection = agent_args.get('interleave_reflection', False)
+
 
     def index(self, dataset: Dataset) -> None:
         """
@@ -144,15 +147,6 @@ keywords related to the question.",
         self._init_searcher()
 
         return super().reason(question)
-
-
-# Default job arguments
-default_job_args = {
-    'temperature': 0.0,
-    'max_completion_tokens': 1000,
-    'frequency_penalty': 0.0,
-    'presence_penalty': 0.0
-}
 
 PROMPT_EXAMPLES_TOOLS = '''### Example 1
 

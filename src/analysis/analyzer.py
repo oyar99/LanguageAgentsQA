@@ -717,7 +717,7 @@ def process_jsonl_file(file_path: str, dataset_name: str, limit: int = None) -> 
             matched_count += 1
 
             # Extract predicted answer from response
-            predicted_answer = data['response']['body']['choices'][0]['message']['content']
+            predicted_answer = str(data['response']['body']['choices'][0]['message']['content'])
 
             # Get expected answers from QuestionAnswer object
             qa_obj = dataset_qa[question_id]

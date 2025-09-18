@@ -18,6 +18,7 @@ def supports_temperature_param(model: str) -> bool:
         'gpt',
         'gpt-4o-mini-batch',
         'Qwen/Qwen2.5-14B-Instruct',
+        'phi-4-mini',
     ]
 
     return model in models_with_temp
