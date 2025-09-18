@@ -311,7 +311,7 @@ def create_learning_trend_eps_only(scores, save_path="learning_trend_chart.eps",
     if mode == "2-agent":
         # Split scores for two agents
         agent1_split = len(scores) // 2
-        
+
         if len(scores) > agent1_split:
             agent1_scores = scores[:agent1_split]
             agent2_scores = scores[agent1_split:]
