@@ -5,7 +5,7 @@ import os
 from typing import Dict, List
 from logger.logger import Logger
 from models.action import Action
-from models.agent import SingleProcessIntelligentAgent
+from models.react_agent import SingleProcessIntelligentAgent
 from models.dataset import Dataset
 
 # pylint: disable-next=too-few-public-methods

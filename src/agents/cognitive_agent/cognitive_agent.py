@@ -10,7 +10,8 @@ from colbert import Indexer, Searcher
 from evaluator.rogue_evaluator import rouge_score
 from logger.logger import Logger
 from models.action import Action
-from models.agent import StatefulIntelligentAgent, NoteBook
+from models.agent import NoteBook
+from models.react_agent import StatefulIntelligentAgent
 from models.dataset import Dataset
 from models.questions_search import QuestionsSearchEngine
 from plugins.post_reflector import post_reflector

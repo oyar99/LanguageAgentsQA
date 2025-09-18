@@ -12,7 +12,8 @@ from colbert.infra import Run, RunConfig, ColBERTConfig
 from colbert import Indexer, Searcher
 from logger.logger import Logger
 from models.action import Action
-from models.agent import IntelligentAgent, NoteBook
+from models.agent import NoteBook
+from models.react_agent import IntelligentAgent
 from models.dataset import Dataset
 from utils.tokenizer import PreprocessingMethod, tokenize
 import utils.agent_worker as worker
