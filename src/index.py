@@ -45,8 +45,9 @@ Ignored if conversation id is provided (optional)')
                         help='model deployment identifier (required in predict mode)')
 
     parser.add_argument('-a', '--agent', choices=['default', 'oracle', 'bm25', 'dense',
-                                                  'colbertv2', 'colbertv2_rerank', 'hippo', 'react', 'react_custom',
-                                                  'lexical_semantic', 'react_retriever', 'cognitive', 'react_hippo'],
+                                                  'colbertv2', 'colbertv2_rerank', 'hippo', 'react_custom',
+                                                  'lexical_semantic', 'react_retriever', 'cognitive', 'react_hippo',
+                                                  'dag_custom'],
                         default='default', help='agent to be used (required in predict mode)')
 
     parser.add_argument('-ag', '--agent-args', type=str, nargs='*', action=KeyValue,
