@@ -6,6 +6,7 @@ Each node represents a sub-question that must be answered to reach the final ans
 # pylint: disable=duplicate-code
 
 from abc import ABC
+import json
 import os
 from typing import Callable, Dict, List, Tuple
 
@@ -43,7 +44,6 @@ class DAGNode:
         self.dependencies = dependencies or []
         self.is_completed = False
         self.result = None
-        self.search_results = []
         self.sources = []
 
 
@@ -69,9 +69,7 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
         self._search_function = search_function
         self._max_iterations = 8
 
-        self._prompt = DAG_AGENT_PROMPT
-
-        Logger().debug(f"DAG Agent prompt: {self._prompt}")
+        Logger().debug(f"DAG Agent prompt: {DAG_AGENT_PROMPT}")
 
     def _parse_dag_plan(self, response_content: str) -> Dict[str, DAGNode]:
         """
@@ -154,100 +152,6 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
 
         return True
 
-    def _reformulate_query(
-            self,
-            original_question: str,
-            dependency_context: str,
-            node_id: str
-    ) -> Tuple[str, Dict[str, int]]:
-        """
-        Reformulate a question based on dependency results to make it more specific and searchable.
-
-        Args:
-            original_question (str): The original sub-question
-            dependency_context (str): Context from completed dependencies
-            node_id (str): Node ID for logging
-
-        Returns:
-            Tuple[str, Dict[str, int]]: Reformulated query and usage metrics
-        """
-        user_content = f"{dependency_context}Original question: {original_question}"
-
-        reformulation_request = {
-            "custom_id": f"reformulate_{node_id}",
-            "model": self._args.model,
-            "messages": [
-                {"role": "system", "content": DAG_QUERY_REFORMULATION_PROMPT},
-                {"role": "user", "content": user_content}
-            ],
-            "temperature": default_job_args['temperature']
-            if supports_temperature_param(self._args.model) else None,
-            "frequency_penalty": default_job_args['frequency_penalty'],
-            "presence_penalty": default_job_args['presence_penalty'],
-            "max_completion_tokens": 200,
-        }
-
-        result = chat_completions([reformulation_request])[0][0]
-        reformulated_query = result.choices[0].message.content.strip()
-
-        usage_metrics = {
-            "completion_tokens": result.usage.completion_tokens,
-            "prompt_tokens": result.usage.prompt_tokens,
-            "total_tokens": result.usage.total_tokens
-        }
-
-        Logger().debug(
-            f"Reformulated query for node {node_id}: {reformulated_query}")
-
-        return reformulated_query, usage_metrics
-
-    def _expand_query(
-        self,
-        original_query: str,
-        previous_attempts: List[str],
-        node_id: str
-    ) -> Tuple[str, Dict[str, int]]:
-        """
-        Expand/reformulate a query when previous attempts failed to find results.
-
-        Args:
-            original_query (str): The original search query
-            previous_attempts (List[str]): List of previously tried queries
-            node_id (str): Node ID for logging
-
-        Returns:
-            Tuple[str, Dict[str, int]]: Expanded query and usage metrics
-        """
-        attempts_text = "\n".join(
-            [f"Attempt {i+1}: {query}" for i, query in enumerate(previous_attempts)])
-        user_content = f"Original query: {original_query}\n\nPrevious unsuccessful attempts:\n{attempts_text}"
-
-        expansion_request = {
-            "custom_id": f"expand_{node_id}",
-            "model": self._args.model,
-            "messages": [
-                {"role": "system", "content": DAG_QUERY_EXPANSION_PROMPT},
-                {"role": "user", "content": user_content}
-            ],
-            "temperature": 0.0,  # Slightly higher for more creative reformulations
-            "frequency_penalty": default_job_args['frequency_penalty'],
-            "presence_penalty": default_job_args['presence_penalty'],
-            "max_completion_tokens": 200,
-        }
-
-        result = chat_completions([expansion_request])[0][0]
-        expanded_query = result.choices[0].message.content.strip()
-
-        usage_metrics = {
-            "completion_tokens": result.usage.completion_tokens,
-            "prompt_tokens": result.usage.prompt_tokens,
-            "total_tokens": result.usage.total_tokens
-        }
-
-        Logger().debug(f"Expanded query for node {node_id}: {expanded_query}")
-
-        return expanded_query, usage_metrics
-
     def _get_executable_nodes(self, nodes: Dict[str, DAGNode]) -> List[str]:
         """
         Get nodes that can be executed (all dependencies completed).
@@ -274,6 +178,69 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
 
         return executable
 
+    def _parse_completed_deps(self, node: DAGNode, nodes: Dict[str, DAGNode]) -> str:
+        """
+        Parse and format the results of completed dependencies for context.
+
+        Args:
+            node (DAGNode): The current node
+            nodes (Dict[str, DAGNode]): All nodes in the DAG
+        Returns:
+            str: Formatted context string from completed dependencies
+        """
+        dependency_context = ""
+        if node.dependencies:
+            dependency_results = []
+            for dep_id in node.dependencies:
+                dep_node = nodes[dep_id]
+                if dep_node.is_completed and dep_node.result:
+                    dependency_results.append(
+                        f"- ({dep_node.node_id}) {dep_node.sub_question}: {dep_node.result}")
+
+            if dependency_results:
+                dependency_context = "Context:\n" + \
+                    "\n".join(dependency_results) + "\n\n"
+        return dependency_context
+
+
+    def _formulate_question(self, node: DAGNode, nodes: Dict[str, DAGNode]) -> str:
+        """
+        Formulate the question for the current node, incorporating results from dependencies.
+
+        Args:
+            node (DAGNode): The current node
+            nodes (Dict[str, DAGNode]): All nodes in the DAG
+
+        Returns:
+            str: The formulated question
+        """
+        user_content = (
+            f"{self._parse_completed_deps(node, nodes)}Question: {node.sub_question}"
+        )
+
+        formulate_request = {
+            "custom_id": f"dag_question_formulation_{node.node_id}",
+            "model": self._args.model,
+            "messages": [
+                {"role": "system", "content": FORMULATE_QUESTION_PROMPT},
+                {"role": "user", "content": user_content}
+            ],
+            "temperature": default_job_args['temperature']
+            if supports_temperature_param(self._args.model) else None,
+            "frequency_penalty": default_job_args['frequency_penalty'],
+            "presence_penalty": default_job_args['presence_penalty'],
+            "max_completion_tokens": 500,
+        }
+
+        result = chat_completions([formulate_request])[0][0]
+
+        reformulated_query = result.choices[0].message.content.strip()
+
+        Logger().debug(f"Node {node.node_id} reformulated query: {reformulated_query}")
+
+        return reformulated_query
+
+
     # pylint: disable-next=too-many-locals
     def _execute_node(
         self,
@@ -291,70 +258,78 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
         Returns:
             Tuple[Dict[str, int], List[str]]: Usage metrics and sources
         """
-        max_attempts = 3
+        max_iterations = 3
+        iteration = 0
         total_usage_metrics = {"completion_tokens": 0,
                                "prompt_tokens": 0, "total_tokens": 0}
-        working_memory = []  # Track attempts but not search results
+        finish_reason = None
+        result = None
+        sources = []
 
         # Build context from completed dependencies
-        dependency_context = ""
-        if node.dependencies:
-            dependency_results = []
-            for dep_id in node.dependencies:
-                dep_node = nodes[dep_id]
-                if dep_node.is_completed and dep_node.result:
-                    dependency_results.append(
-                        f"- {dep_node.sub_question}: {dep_node.result}")
+        user_content = (
+            f"{self._parse_completed_deps(node, nodes)}Question: {node.sub_question}"
+        )
 
-            if dependency_results:
-                dependency_context = "Previous findings:\n" + \
-                    "\n".join(dependency_results) + "\n\n"
+        messages = [
+            {"role": "system", "content": ANSWER_AGENT_PROMPT},
+            {"role": "user", "content": user_content}
+        ]
 
-        # Initial query - reformulate based on dependency results if available
-        search_query = node.sub_question
-        if dependency_context:
-            search_query, reformulation_metrics = self._reformulate_query(
-                node.sub_question, dependency_context, node.node_id
-            )
-            # Update total metrics
-            for key in total_usage_metrics:
-                total_usage_metrics[key] += reformulation_metrics.get(key, 0)
-
-        # ReAct loop - try multiple query formulations
-        for attempt in range(max_attempts):
+        # ReAct loop
+        # TODO: Assess using our own ReAct implementation in src/models/react_agent.py
+        while finish_reason is None or finish_reason == "tool_calls":
             Logger().debug(
-                f"Node {node.node_id} attempt {attempt + 1}: {search_query}")
+                f"Node {node.node_id} iteration {iteration + 1}")
 
-            # Track this attempt in working memory (query only, not results)
-            working_memory.append(f"Attempt {attempt + 1}: {search_query}")
-
-            # Execute search
-            documents, sources, search_metrics = self._search_function(
-                search_query)
-
-            # Update total metrics with search metrics
-            for key in total_usage_metrics:
-                total_usage_metrics[key] += search_metrics.get(key, 0)
-
-            # Try to extract answer from search results
-            search_results_text = "\n".join(
-                [f'Document {i+1}: {doc}' for i, doc in enumerate(documents)])
-            user_content = (
-                f"{dependency_context}Question: {node.sub_question}\n\nSearch Results:\n{search_results_text}"
-            )
+            iteration += 1
 
             answer_request = {
-                "custom_id": f"dag_node_{node.node_id}_attempt_{attempt + 1}",
+                "custom_id": f"dag_node_{node.node_id}_attempt_{iteration}",
                 "model": self._args.model,
-                "messages": [
-                    {"role": "system", "content": DAG_NODE_ANSWER_PROMPT},
-                    {"role": "user", "content": user_content}
-                ],
+                "messages": messages,
                 "temperature": default_job_args['temperature']
                 if supports_temperature_param(self._args.model) else None,
                 "frequency_penalty": default_job_args['frequency_penalty'],
                 "presence_penalty": default_job_args['presence_penalty'],
                 "max_completion_tokens": 500,
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "description": "Returns top-5 relevant documents from the corpus for the given query \
+using a dense retriever",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {
+                                        "type": "string",
+                                        "description": "The search query"
+                                    }
+                                },
+                                "required": ["query"]
+                            },
+                        }
+                    }
+                ],
+                "tool_choice": "auto" if iteration <= max_iterations else "none",
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "strict": True,
+                        "name": "qa_answering",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "reasoning": {"type": "string"},
+                                "answer": {"type": "string"}
+                            },
+                            "required": ["reasoning", "answer"],
+                            "additionalProperties": False
+                        }
+                    }
+                }
             }
 
             result = chat_completions([answer_request])[0][0]
@@ -364,38 +339,61 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
             total_usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
             total_usage_metrics["total_tokens"] += result.usage.total_tokens
 
-            # Extract the answer
-            answer = result.choices[0].message.content.strip()
+            # Append tool messages to conversation
+            messages.append(result.choices[0].message)
 
-            # If we found an answer, we're done
-            if answer != "N/A":
-                node.result = answer
-                node.is_completed = True
-                node.search_results = documents  # Store final successful search results
-                node.sources = sources
+            tool_calls = result.choices[0].message.tool_calls
+            finish_reason = result.choices[0].finish_reason
 
-                Logger().debug(
-                    f"Node {node.node_id} succeeded on attempt {attempt + 1}: {answer}")
-                return total_usage_metrics, sources
+            if tool_calls:
+                for tool_call in tool_calls:
+                    if tool_call.function.name == "search":
+                        function_args = json.loads(
+                            tool_call.function.arguments)
+                        query = function_args.get("query")
 
-            # If this was the last attempt, fail
-            if attempt == max_attempts - 1:
-                Logger().debug(
-                    f"Node {node.node_id} failed after {max_attempts} attempts")
-                raise ValueError(
-                    f"Node {node.node_id} could not find answer for: {node.sub_question} after {max_attempts} attempts"
-                )
+                        Logger().debug(
+                            f"Node {node.node_id} iteration {iteration} searching for: {query}"
+                        )
 
-            # Generate a new query for the next attempt
-            search_query, expansion_metrics = self._expand_query(
-                node.sub_question, working_memory, node.node_id
+                        documents, search_sources, search_metrics = self._search_function(
+                            query)
+
+                        messages.append({
+                            "tool_call_id": tool_call.id,
+                            "role": "tool",
+                            "name": "search",
+                            "content": json.dumps({
+                                "documents": documents
+                            })
+                        })
+
+                        sources.extend(search_sources)
+
+                        for key in total_usage_metrics:
+                            total_usage_metrics[key] += search_metrics.get(
+                                key, 0)
+
+        content = result.choices[0].message.content.strip()
+
+        structured_response = parse_structured_response(content)
+        answer = structured_response['answer']
+
+        Logger().debug(
+            f"Node {node.node_id} final answer iteration {iteration}: {answer}")
+
+        if answer == "N/A":
+            Logger().debug(
+                f"Node {node.node_id} failed after {iteration} attempts")
+            raise ValueError(
+                f"Node {node.node_id} could not find answer for: {node.sub_question} after {iteration} attempts"
             )
 
-            # Update total metrics
-            for key in total_usage_metrics:
-                total_usage_metrics[key] += expansion_metrics.get(key, 0)
+        node.result = answer
+        node.is_completed = True
+        node.sources = sources
 
-        return total_usage_metrics, []
+        return total_usage_metrics, sources
 
     def _synthesize_final_answer(
         self,
@@ -475,7 +473,7 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
             "custom_id": "dag_planning",
             "model": self._args.model,
             "messages": [
-                {"role": "system", "content": self._prompt},
+                {"role": "system", "content": DAG_AGENT_PROMPT},
                 {"role": "user", "content": f"Question: {question}"}
             ],
             "temperature": default_job_args['temperature']
@@ -633,23 +631,12 @@ default_job_args = {
 }
 
 DAG_AGENT_PROMPT = '''You are an expert question decomposition agent. Your task is to analyze a complex \
-question and break it down into a directed acyclic graph (DAG) of sub-questions.
-
-Each sub-question should:
-1. Be answerable through document search
-2. Build towards answering the main question
-3. Have clear dependencies on other sub-questions when needed
-4. Be as specific and focused as possible
-5. Contain only ONE question - never combine multiple questions in a single sub-question
-
-## CONSTRAINTS
-
-- Node IDs must be unique and follow the pattern "node_N" where N is a number
-- Dependencies must reference valid node IDs
-- The DAG must be acyclic (no circular dependencies)
-- Each sub-question should be clear and searchable
-- Each sub-question must ask only ONE thing - avoid compound questions
-- Focus on factual information that can be found in documents
+question and break it down into a directed acyclic graph (DAG) of sub-questions. Each sub-question should \
+build towards answering the main question, and should have clear dependencies on other sub-questions when needed. \
+The sub-questions must be as specific and focused as possible, hence they should contain only ONE question. Do \
+not combine or compound multiple questions in a single sub-question. Each sub-question must be identified \
+by a unique node ID that follows the pattern "node_N" where N is a number (e.g., node_1, node_2, etc.).
+Dependencies should reference the node IDs of other sub-questions that must be answered first.
 
 ## EXAMPLES
 
@@ -676,7 +663,8 @@ Question: "In which county is the stadium owned by Canyon Independent School Dis
 
 Response:
 {
-    "reasoning": "I need to first find what stadium is owned by Canyon Independent School District, then find where that stadium is located, and finally determine which county that location is in.",
+    "reasoning": "I need to first find what stadium is owned by Canyon Independent School District, then find where that stadium is located, \
+and finally determine which county that location is in.",
     "dag_plan": [
         {
             "node_id": "node_1",
@@ -685,23 +673,34 @@ Response:
         },
         {
             "node_id": "node_2",
-            "sub_question": "Where is this stadium located (city and state)?",
+            "sub_question": "Where is the stadium identified in node 1 located?",
             "dependencies": ["node_1"]
         },
         {
             "node_id": "node_3",
-            "sub_question": "Which county is this location in?",
+            "sub_question": "Which county is the location identified in node 2 in?",
             "dependencies": ["node_2"]
         }
     ]
 }
 '''
 
-DAG_NODE_ANSWER_PROMPT = '''You are a helpful assistant that extracts precise answers from search results. \
-Based on the search results provided by the user, provide a precise answer to the question. Use only information \
-found in the search results.
+FORMULATE_QUESTION_PROMPT = '''Given a list of sub-questions and their answers, formulate a new sub-question that \
+replaces references to previous sub-questions with their answers. The purpose is to simplify the question by using known information.
 
-If the search results don't contain enough information to answer the question, respond with "N/A".
+The new sub-question should be clear and self-contained. It should not reference node IDs.
+
+## Example
+
+Context:
+- (node_1) What stadium is owned by Canyon Independent School District?: Canyon Independent School District owns Kimbrough Memorial Stadium.
+
+Question:
+- Where is the stadium identified in node 1 located?
+
+Response:
+
+"Where is Kimbrough Memorial Stadium located?"
 '''
 
 DAG_SYNTHESIS_PROMPT = '''You are an intelligent QA agent. Based on the sub-question results provided by the \
@@ -711,26 +710,29 @@ or notes in your final response. If the answer can be a single word (e.g., Yes, 
 please provide just that word.
 '''
 
-DAG_QUERY_REFORMULATION_PROMPT = '''You are a helpful assistant that reformulates questions to be more specific \
-and searchable by incorporating concrete details from previous findings. Your task is to replace abstract references \
-with specific information while keeping the question focused and concise.
+ANSWER_AGENT_PROMPT = '''You are an intelligent QA agent that must find evidence to support the answer \
+to questions. You must provide a search query only with keywords that will likely return relevant results using a semantic retriever. 
 
-Guidelines:
-- Replace references like "the person identified in node 1" with the actual name/entity found
-- Remove redundant descriptive phrases that repeat information from previous findings
-- Keep the reformulated question direct and searchable
-- Do not add unnecessary context that was already established
+Once you provide a search query, you will receive search results and must determine if the results contain information to support the answer
+to the question. If so, you will provide an explanation of the answer, and a concise exact answer for the question. Otherwise, you will need to provide \
+a new search query with different keywords.
 
-Provide a reformulated question that incorporates specific details from the previous findings. Only return the reformulated question, nothing else.
-'''
+Only if information is definitely not available to provide an answer, respond with "N/A" as the answer.
 
-DAG_QUERY_EXPANSION_PROMPT = '''You are a helpful assistant that expands and reformulates search queries when \
-previous attempts have failed to find results. Your task is to create alternative query formulations using different \
-keywords, synonyms, or query structures that might yield better search results.
+You are provided relevant context from previous findings that you can use to understand the question better and to help you formulate your search queries.
 
-You can use synonyms or alternative terms, break down complex queries into simpler parts, add relevant keywords or \
-context, try different phrasings or question structures, or focus on key entities or concepts.
+## Example
 
-Provide a new search query that takes a different approach from the previous attempts. Only return the new query, \
-nothing else.
+Context:
+- (node_1) What stadium is owned by Canyon Independent School District?: Canyon Independent School District owns Kimbrough Memorial Stadium.
+
+Question:
+
+- Where is the stadium identified in node 1 located?
+
+Response:
+{
+    "reasoning": "The documents indicate that Kimbrough Memorial Stadium is located in Canyon Texas.",
+    "answer": "Canyon, Texas"
+}
 '''

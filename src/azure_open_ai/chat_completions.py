@@ -22,7 +22,7 @@ def _create_empty_chat_completion(job: dict) -> ChatCompletion:
         id="filtered-content",
         choices=[
             Choice(
-                finish_reason="content_filter",
+                finish_reason="stop",
                 index=0,
                 message=ChatCompletionMessage(
                     content="",

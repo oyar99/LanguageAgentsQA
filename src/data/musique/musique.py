@@ -59,6 +59,7 @@ class MuSiQue(Dataset):
                     )
                 )
                 for sample in data
+                # if sample['id'].startswith('4hop')
                 if conversation_id is None or sample['id'] == conversation_id
             ]
             dataset = super().process_dataset(dataset)
