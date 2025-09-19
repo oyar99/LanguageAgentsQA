@@ -6,12 +6,12 @@ Each node represents a sub-question that must be answered to reach the final ans
 # pylint: disable=duplicate-code
 
 from abc import ABC
-import json
 import os
 from typing import Callable, Dict, List, Tuple
 
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
+from models.action import Action
 from models.agent import (
     MultiprocessingSearchAgent,
     MultiprocessingStatefulSearchAgent,
@@ -19,9 +19,51 @@ from models.agent import (
     SelfContainedAgent,
     SingleProcessAgent
 )
+from models.react_agent import BaseIntelligentAgent
 from models.retrieved_result import RetrievedResult
+from models.question_answer import QuestionAnswer
 from utils.model_utils import supports_temperature_param
 from utils.structure_response import parse_structured_response
+
+
+class ReactAgent(BaseIntelligentAgent, ABC):
+    """
+    A React agent that uses a single processing search agent as a helper to answer questions.
+    """
+
+    def __init__(self, actions: Dict[str, Action], extra_prompt: str, args):
+        """
+        Initialize the React agent.
+
+        Args:
+            actions (Dict[str, Action]): A dictionary of actions the agent can perform.
+            extra_prompt (str): Additional instructions to include in the prompt for the agent such as \
+few-shot examples.
+            args: Agent arguments.
+        """
+        BaseIntelligentAgent.__init__(self, actions, extra_prompt, args)
+        self._max_iterations = 6
+        self.corpus = None
+
+    def index(self, _) -> None:
+        """
+        Index the dataset (not implemented for ReactAgent helper).
+
+        Raises:
+            NotImplementedError: Indexing is not implemented for ReactAgent Helper.
+        """
+        raise NotImplementedError(
+            "Indexing is not implemented for ReactAgent Helper.")
+
+    def batch_reason(self, _: list[QuestionAnswer]) -> list[NoteBook]:  # type: ignore
+        """
+        Uses its question index to answer the questions.
+
+        Raises:
+            NotImplementedError: Batch reasoning is not implemented for SingleProcessingSearchAgent.
+        """
+        raise NotImplementedError(
+            "Batch reasoning is not implemented for ReactAgent Helper.")
 
 # pylint: disable-next=too-few-public-methods
 class DAGNode:
@@ -43,8 +85,9 @@ class DAGNode:
         self.sub_question = sub_question
         self.dependencies = dependencies or []
         self.is_completed = False
+        self.is_failed = False
         self.result = None
-        self.sources = []
+        self.sources: List[RetrievedResult] = []
 
 
 class BaseDAGAgent(SelfContainedAgent, ABC):
@@ -69,7 +112,27 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
         self._search_function = search_function
         self._max_iterations = 8
 
+        actions = {
+            "search": Action(
+                "Search for relevant documents for the given query using a semantic retriever. \
+You will obtain more relevant results by formulating queries scoped to specific entities or \
+keywords related to the question.",
+                search_function
+            )
+        }
+
+        self._react_agent = ReactAgent(actions, PROMPT_EXAMPLES_TOOLS, args)
+
         Logger().debug(f"DAG Agent prompt: {DAG_AGENT_PROMPT}")
+
+    def index(self, _):
+        """
+        Index the dataset for the DAG agent.
+        """
+        # TODO: Workaround to ensure corpus is set for the ReactAgent engine
+        # Actual fix should be to re-design how react_agent returns results
+        # pylint: disable-next=protected-access
+        self._react_agent._corpus = self._corpus
 
     def _parse_dag_plan(self, response_content: str) -> Dict[str, DAGNode]:
         """
@@ -202,8 +265,7 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
                     "\n".join(dependency_results) + "\n\n"
         return dependency_context
 
-
-    def _formulate_question(self, node: DAGNode, nodes: Dict[str, DAGNode]) -> str:
+    def _formulate_question(self, node: DAGNode, nodes: Dict[str, DAGNode]) -> Tuple[Dict[str, int], str]:
         """
         Formulate the question for the current node, incorporating results from dependencies.
 
@@ -214,6 +276,14 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
         Returns:
             str: The formulated question
         """
+        # If question does not have deps, then we just return it as is
+        if not node.dependencies:
+            return {
+                "completion_tokens": 0,
+                "prompt_tokens": 0,
+                "total_tokens": 0
+            }, node.sub_question
+
         user_content = (
             f"{self._parse_completed_deps(node, nodes)}Question: {node.sub_question}"
         )
@@ -236,17 +306,22 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
 
         reformulated_query = result.choices[0].message.content.strip()
 
-        Logger().debug(f"Node {node.node_id} reformulated query: {reformulated_query}")
+        Logger().debug(
+            f"Node {node.node_id} reformulated query: {reformulated_query}")
 
-        return reformulated_query
-
+        return {
+            "completion_tokens": result.usage.completion_tokens,
+            "prompt_tokens": result.usage.prompt_tokens,
+            "total_tokens": result.usage.total_tokens
+        }, reformulated_query
 
     # pylint: disable-next=too-many-locals
+
     def _execute_node(
         self,
         node: DAGNode,
         nodes: Dict[str, DAGNode]
-    ) -> Tuple[Dict[str, int], List[str]]:
+    ) -> Tuple[Dict[str, int], List[RetrievedResult]]:
         """
         Execute a single node by searching for information to answer its sub-question.
         Uses a ReAct loop to reformulate queries if initial attempts don't find answers.
@@ -258,139 +333,34 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
         Returns:
             Tuple[Dict[str, int], List[str]]: Usage metrics and sources
         """
-        max_iterations = 3
-        iteration = 0
-        total_usage_metrics = {"completion_tokens": 0,
-                               "prompt_tokens": 0, "total_tokens": 0}
-        finish_reason = None
-        result = None
-        sources = []
+        formulate_metrics, question = self._formulate_question(node, nodes)
 
-        # Build context from completed dependencies
-        user_content = (
-            f"{self._parse_completed_deps(node, nodes)}Question: {node.sub_question}"
-        )
+        notebook = self._react_agent.reason(question)
 
-        messages = [
-            {"role": "system", "content": ANSWER_AGENT_PROMPT},
-            {"role": "user", "content": user_content}
-        ]
-
-        # ReAct loop
-        # TODO: Assess using our own ReAct implementation in src/models/react_agent.py
-        while finish_reason is None or finish_reason == "tool_calls":
-            Logger().debug(
-                f"Node {node.node_id} iteration {iteration + 1}")
-
-            iteration += 1
-
-            answer_request = {
-                "custom_id": f"dag_node_{node.node_id}_attempt_{iteration}",
-                "model": self._args.model,
-                "messages": messages,
-                "temperature": default_job_args['temperature']
-                if supports_temperature_param(self._args.model) else None,
-                "frequency_penalty": default_job_args['frequency_penalty'],
-                "presence_penalty": default_job_args['presence_penalty'],
-                "max_completion_tokens": 500,
-                "tools": [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "search",
-                            "description": "Returns top-5 relevant documents from the corpus for the given query \
-using a dense retriever",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "query": {
-                                        "type": "string",
-                                        "description": "The search query"
-                                    }
-                                },
-                                "required": ["query"]
-                            },
-                        }
-                    }
-                ],
-                "tool_choice": "auto" if iteration <= max_iterations else "none",
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "strict": True,
-                        "name": "qa_answering",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "reasoning": {"type": "string"},
-                                "answer": {"type": "string"}
-                            },
-                            "required": ["reasoning", "answer"],
-                            "additionalProperties": False
-                        }
-                    }
-                }
-            }
-
-            result = chat_completions([answer_request])[0][0]
-
-            # Update total metrics
-            total_usage_metrics["completion_tokens"] += result.usage.completion_tokens
-            total_usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
-            total_usage_metrics["total_tokens"] += result.usage.total_tokens
-
-            # Append tool messages to conversation
-            messages.append(result.choices[0].message)
-
-            tool_calls = result.choices[0].message.tool_calls
-            finish_reason = result.choices[0].finish_reason
-
-            if tool_calls:
-                for tool_call in tool_calls:
-                    if tool_call.function.name == "search":
-                        function_args = json.loads(
-                            tool_call.function.arguments)
-                        query = function_args.get("query")
-
-                        Logger().debug(
-                            f"Node {node.node_id} iteration {iteration} searching for: {query}"
-                        )
-
-                        documents, search_sources, search_metrics = self._search_function(
-                            query)
-
-                        messages.append({
-                            "tool_call_id": tool_call.id,
-                            "role": "tool",
-                            "name": "search",
-                            "content": json.dumps({
-                                "documents": documents
-                            })
-                        })
-
-                        sources.extend(search_sources)
-
-                        for key in total_usage_metrics:
-                            total_usage_metrics[key] += search_metrics.get(
-                                key, 0)
-
-        content = result.choices[0].message.content.strip()
-
-        structured_response = parse_structured_response(content)
-        answer = structured_response['answer']
-
-        Logger().debug(
-            f"Node {node.node_id} final answer iteration {iteration}: {answer}")
-
-        if answer == "N/A":
-            Logger().debug(
-                f"Node {node.node_id} failed after {iteration} attempts")
-            raise ValueError(
-                f"Node {node.node_id} could not find answer for: {node.sub_question} after {iteration} attempts"
+        answer = notebook.get_notes()
+        sources = notebook.get_sources()
+        total_usage_metrics = {
+            "completion_tokens": (
+                formulate_metrics["completion_tokens"] +
+                notebook.get_usage_metrics().get("completion_tokens", 0)
+            ),
+            "prompt_tokens": (
+                formulate_metrics["prompt_tokens"] +
+                notebook.get_usage_metrics().get("prompt_tokens", 0)
+            ),
+            "total_tokens": (
+                formulate_metrics["total_tokens"] +
+                notebook.get_usage_metrics().get("total_tokens", 0)
             )
+        }
 
-        node.result = answer
-        node.is_completed = True
+        if answer == 'N/A':
+            Logger().warn(f"Node {node.node_id} could not find an answer.")
+            node.is_failed = True
+        else:
+            node.result = answer
+            node.is_completed = True
+
         node.sources = sources
 
         return total_usage_metrics, sources
@@ -466,7 +436,7 @@ using a dense retriever",
         }
 
         messages = []
-        sources: Dict[str, List[str]] = {}
+        sources: Dict[str, List[RetrievedResult]] = {}
 
         # Phase 1: Generate DAG plan
         open_ai_request = {
@@ -531,6 +501,7 @@ using a dense retriever",
 
         # Phase 2: Execute DAG nodes
         iteration = 0
+        stop = False
         while iteration < self._max_iterations:
             executable_nodes = self._get_executable_nodes(nodes)
 
@@ -555,6 +526,18 @@ using a dense retriever",
                     folder_id = f"node_{node_id}"
                     sources[folder_id] = list(node_sources)
 
+                # If a node fails, we stop further execution
+                # We hope for the best once the answer is synthesized with all available info
+                if node.is_failed:
+                    Logger().warn(
+                        f"Node {node.node_id} failed to produce an answer. Abandoning further execution."
+                    )
+                    stop = True
+                    break
+
+            if stop:
+                break
+
             iteration += 1
 
         # Phase 3: Synthesize final answer
@@ -574,17 +557,16 @@ using a dense retriever",
         # Flatten sources dictionary
         flattened_sources = []
         for folder_id, folder_sources in sources.items():
-            flattened_sources.extend([(folder_id, doc_id)
-                                     for doc_id in folder_sources])
+            flattened_sources.extend([
+                RetrievedResult(
+                    doc_id=res['doc_id'],
+                    content=res['content'],
+                    folder_id=f"{folder_id}-{res['folder_id']}"
+                )
+                for res in folder_sources
+            ])
 
-        notebook.update_sources([
-            RetrievedResult(
-                doc_id=self._corpus[doc_id]['doc_id'],
-                content=self._corpus[doc_id]['content'],
-                folder_id=folder_id
-            )
-            for folder_id, doc_id in flattened_sources
-        ])
+        notebook.update_sources(flattened_sources)
         notebook.update_notes(final_answer)
         notebook.update_usage_metrics(usage_metrics)
         notebook.update_messages(messages)
@@ -707,32 +689,38 @@ DAG_SYNTHESIS_PROMPT = '''You are an intelligent QA agent. Based on the sub-ques
 user, provide an EXACT answer to the original question, using only words found in the sub-question results \
 when possible. Under no circumstances should you include any additional commentary, explanations, reasoning, \
 or notes in your final response. If the answer can be a single word (e.g., Yes, No, a date, or an object), \
-please provide just that word.
+please provide just that word. If the answer is not available based on the sub-question results, respond with "N/A".
 '''
 
-ANSWER_AGENT_PROMPT = '''You are an intelligent QA agent that must find evidence to support the answer \
-to questions. You must provide a search query only with keywords that will likely return relevant results using a semantic retriever. 
+PROMPT_EXAMPLES_TOOLS = '''### Example
 
-Once you provide a search query, you will receive search results and must determine if the results contain information to support the answer
-to the question. If so, you will provide an explanation of the answer, and a concise exact answer for the question. Otherwise, you will need to provide \
-a new search query with different keywords.
+Question: "Where is Kimbrough Memorial Stadium?"
 
-Only if information is definitely not available to provide an answer, respond with "N/A" as the answer.
-
-You are provided relevant context from previous findings that you can use to understand the question better and to help you formulate your search queries.
-
-## Example
-
-Context:
-- (node_1) What stadium is owned by Canyon Independent School District?: Canyon Independent School District owns Kimbrough Memorial Stadium.
-
-Question:
-
-- Where is the stadium identified in node 1 located?
-
-Response:
+Iteration 1:
+```json
 {
-    "reasoning": "The documents indicate that Kimbrough Memorial Stadium is located in Canyon Texas.",
-    "answer": "Canyon, Texas"
+    "thought": "I need to find where Kimbrough Memorial Stadium is located.",
+    "actions": ["search('Kimbrough Memorial Stadium')"]
 }
+```
+
+Iteration 2:
+```json
+{
+    "thought": "I need to find where Kimbrough Memorial Stadium is located.",
+    "actions": ["search('Kimbrough Memorial Stadium')"]
+    "observations": [["Kimbrough Memorial Stadium is located in Canyon, Texas"]]
+}
+```
+
+Iteration 3:
+```json
+{
+    "thought": "The retrieved information indicates that Kimbrough Memorial Stadium is located in Canyon, Texas.",
+    "final_answer": "Canyon, Texas"
+}
+```
+
+You must keep trying to find an answer until instructed otherwise. At which point, you must provide the final answer. \
+If you cannot find an answer at that time, respond with "N/A" as the final answer.
 '''

@@ -51,6 +51,8 @@ class DAGAgentCustom(DAGAgent):
         self._corpus = corpus
         Logger().info("Successfully indexed documents")
 
+        super().index(dataset)
+
     def _search_documents(
             self,
             query: str,
