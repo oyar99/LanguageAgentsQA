@@ -65,7 +65,7 @@ few-shot examples.
         raise NotImplementedError(
             "Batch reasoning is not implemented for ReactAgent Helper.")
 
-# pylint: disable-next=too-few-public-methods
+# pylint: disable-next=too-few-public-methods, too-many-instance-attributes
 class DAGNode:
     """
     Represents a node in the DAG structure.
@@ -828,7 +828,7 @@ class DAGAgent(BaseDAGAgent, MultiprocessingSearchAgent, ABC):
     """
 
     def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=16):
-        MultiprocessingSearchAgent.__init__(self, args, cores=12)
+        MultiprocessingSearchAgent.__init__(self, args, cores)
         BaseDAGAgent.__init__(self, search_function, args)
 
 
