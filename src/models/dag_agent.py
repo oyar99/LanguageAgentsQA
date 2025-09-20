@@ -66,8 +66,6 @@ few-shot examples.
             "Batch reasoning is not implemented for ReactAgent Helper.")
 
 # pylint: disable-next=too-few-public-methods
-
-
 class DAGNode:
     """
     Represents a node in the DAG structure.
@@ -491,7 +489,6 @@ keywords related to the question.",
         }, reformulated_query
 
     # pylint: disable-next=too-many-locals
-
     def _execute_node(
         self,
         node: DAGNode,
