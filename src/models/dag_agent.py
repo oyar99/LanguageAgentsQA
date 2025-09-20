@@ -66,6 +66,8 @@ few-shot examples.
             "Batch reasoning is not implemented for ReactAgent Helper.")
 
 # pylint: disable-next=too-few-public-methods
+
+
 class DAGNode:
     """
     Represents a node in the DAG structure.
@@ -87,7 +89,11 @@ class DAGNode:
         self.is_completed = False
         self.is_failed = False
         self.result = None
-        self.sources: List[RetrievedResult] = []
+        self.alternative_results = []  # Store alternative answers for backtracking
+        # Track if we've exhausted all alternatives for this node
+        self.alternatives_exhausted = False
+        self.sources = []
+        self.formulated_question = None  # Store the formulated question for backtracking
 
 
 class BaseDAGAgent(SelfContainedAgent, ABC):
@@ -215,9 +221,178 @@ keywords related to the question.",
 
         return True
 
+    def _get_dependent_nodes(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> List[str]:
+        """
+        Get all nodes that depend on the given failed node.
+
+        Args:
+            failed_node_id (str): The ID of the failed node
+            nodes (Dict[str, DAGNode]): All nodes in the DAG
+
+        Returns:
+            List[str]: List of node IDs that depend on the failed node
+        """
+        dependent_nodes = []
+        for node_id, node in nodes.items():
+            if failed_node_id in node.dependencies:
+                dependent_nodes.append(node_id)
+        return dependent_nodes
+
+    def _reset_dependent_nodes(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> None:
+        """
+        Reset all nodes that depend on the failed node back to incomplete state.
+
+        Args:
+            failed_node_id (str): The ID of the failed node
+            nodes (Dict[str, DAGNode]): All nodes in the DAG
+        """
+        dependent_nodes = self._get_dependent_nodes(failed_node_id, nodes)
+
+        for dep_node_id in dependent_nodes:
+            dep_node = nodes[dep_node_id]
+            if dep_node.is_completed or dep_node.is_failed:
+                Logger().debug(
+                    f"Resetting node {dep_node_id} due to failed dependency {failed_node_id}")
+                dep_node.is_completed = False
+                dep_node.is_failed = False
+                dep_node.result = None
+                dep_node.alternatives_exhausted = False  # Reset alternatives exhausted flag
+                # Recursively reset nodes that depend on this one
+                self._reset_dependent_nodes(dep_node_id, nodes)
+
+    def _find_backtrack_candidate(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> str:
+        """
+        Find a dependency node that can be backtracked to find alternative answers.
+
+        Args:
+            failed_node_id (str): The ID of the failed node
+            nodes (Dict[str, DAGNode]): All nodes in the DAG
+
+        Returns:
+            str: Node ID to backtrack to, or None if no backtrack candidate found
+        """
+        failed_node = nodes[failed_node_id]
+
+        # Look through dependencies to find one that might have alternative answers
+        for dep_id in failed_node.dependencies:
+            dep_node = nodes[dep_id]
+            # If the dependency node completed successfully and hasn't exhausted alternatives, it might have more
+            if dep_node.is_completed and dep_node.sources and not dep_node.alternatives_exhausted:
+                Logger().debug(
+                    f"Found backtrack candidate: {dep_id} for failed node {failed_node_id}")
+                return dep_id
+
+        # If no direct dependencies can be backtracked, check if any dependency has its own dependencies
+        for dep_id in failed_node.dependencies:
+            if nodes[dep_id].dependencies:
+                candidate = self._find_backtrack_candidate(dep_id, nodes)
+                if candidate:
+                    return candidate
+
+        return None
+
+    def _build_alternative_answer_prompt(self, node: DAGNode) -> str:
+        """
+        Build the user content prompt for alternative answer extraction.
+        Deduplicates sources based on doc_id while preserving content for analysis.
+
+        Args:
+            node (DAGNode): The node to build the prompt for
+
+        Returns:
+            str: The formatted user content prompt
+        """
+        # Use all previously tried answers (which includes the current result)
+        tried_answers_text = ", ".join(
+            [f"'{answer}'" for answer in node.alternative_results])
+
+        # Use the formulated question instead of sub_question to avoid node references
+        question_to_use = node.formulated_question
+
+        # Deduplicate sources based on doc_id but keep original structure for downstream use
+        seen_doc_ids = set()
+        unique_sources = []
+
+        for source in node.sources:
+            doc_id = source['doc_id']
+            if doc_id not in seen_doc_ids:
+                seen_doc_ids.add(doc_id)
+                unique_sources.append(source)
+
+        # Build context with deduplicated sources
+        user_content = f"Sub-question: {question_to_use}\n\nSearch Results:\n"
+        for i, source in enumerate(unique_sources):
+            user_content += f'Document {i+1}: {source["content"]}\n'
+
+        user_content += f"\nPrevious answers: {tried_answers_text}\n\n"
+
+        return user_content
+
+    def _extract_alternative_answer(self, node: DAGNode) -> Tuple[str, Dict[str, int]]:
+        """
+        Try to extract an alternative answer from a node's sources, excluding all previously tried answers.
+
+        Args:
+            node (DAGNode): The node to extract alternative answer from
+
+        Returns:
+            Tuple[str, Dict[str, int]]: Alternative answer and usage metrics
+        """
+        # Build the user content with deduplicated sources
+        user_content = self._build_alternative_answer_prompt(node)
+
+        Logger().debug(f"Extracting alternative answer with content: {user_content}")
+
+        alternative_request = {
+            "custom_id": f"alternative_{node.node_id}",
+            "model": self._args.model,
+            "messages": [
+                {"role": "system", "content": DAG_ALTERNATIVE_ANSWER_PROMPT},
+                {"role": "user", "content": user_content}
+            ],
+            "temperature": default_job_args['temperature']
+            if supports_temperature_param(self._args.model) else None,
+            "frequency_penalty": default_job_args['frequency_penalty'],
+            "presence_penalty": default_job_args['presence_penalty'],
+            "max_completion_tokens": 500,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "strict": True,
+                    "name": "alternative_answer_extractor",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "reasoning": {"type": "string"},
+                            "alternative_answer": {"type": "string"}
+                        },
+                        "required": ["reasoning", "alternative_answer"],
+                        "additionalProperties": False
+                    }
+                }
+            }
+        }
+
+        result = chat_completions([alternative_request])[0][0]
+
+        # Parse the structured response
+        structured_response = parse_structured_response(
+            result.choices[0].message.content.strip())
+        alternative_answer = structured_response['alternative_answer']
+
+        usage_metrics = {
+            "completion_tokens": result.usage.completion_tokens,
+            "prompt_tokens": result.usage.prompt_tokens,
+            "total_tokens": result.usage.total_tokens
+        }
+
+        Logger().debug(
+            f"Found alternative answer for node {node.node_id}: {alternative_answer}")
+        return alternative_answer, usage_metrics
+
     def _get_executable_nodes(self, nodes: Dict[str, DAGNode]) -> List[str]:
         """
-        Get nodes that can be executed (all dependencies completed).
+        Get nodes that can be executed (all dependencies completed and not failed).
 
         Args:
             nodes (Dict[str, DAGNode]): All nodes in the DAG
@@ -228,12 +403,12 @@ keywords related to the question.",
         executable = []
 
         for node_id, node in nodes.items():
-            if node.is_completed:
+            if node.is_completed or node.is_failed:
                 continue
 
-            # Check if all dependencies are completed
+            # Check if all dependencies are completed (and not failed)
             deps_completed = all(
-                nodes[dep].is_completed for dep in node.dependencies
+                nodes[dep].is_completed and not nodes[dep].is_failed for dep in node.dependencies
             )
 
             if deps_completed:
@@ -324,16 +499,18 @@ keywords related to the question.",
     ) -> Tuple[Dict[str, int], List[RetrievedResult]]:
         """
         Execute a single node by searching for information to answer its sub-question.
-        Uses a ReAct loop to reformulate queries if initial attempts don't find answers.
 
         Args:
             node (DAGNode): The node to execute
             nodes (Dict[str, DAGNode]): All nodes for context
 
         Returns:
-            Tuple[Dict[str, int], List[str]]: Usage metrics and sources
+            Tuple[Dict[str, int], List[RetrievedResult]]: Usage metrics and sources
         """
         formulate_metrics, question = self._formulate_question(node, nodes)
+
+        # Store the formulated question for potential backtracking
+        node.formulated_question = question
 
         notebook = self._react_agent.reason(question)
 
@@ -354,16 +531,69 @@ keywords related to the question.",
             )
         }
 
+        # In case a node is executed multiple times due to backtracking, we append new sources
+        # so we can compute retrieval metrics
+        node.sources.extend(sources)
+
         if answer == 'N/A':
-            Logger().warn(f"Node {node.node_id} could not find an answer.")
+            Logger().debug(f"Node {node.node_id} failed to find an answer")
             node.is_failed = True
         else:
+            Logger().debug(
+                f"Node {node.node_id} succeeded with answer: {answer}")
             node.result = answer
             node.is_completed = True
-
-        node.sources = sources
+            node.alternative_results.append(answer)
 
         return total_usage_metrics, sources
+
+    def _attempt_backtrack(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> Tuple[bool, Dict[str, int]]:
+        """
+        Attempt to backtrack when a node fails by finding alternative answers in dependencies.
+
+        Args:
+            failed_node_id (str): The ID of the failed node
+            nodes (Dict[str, DAGNode]): All nodes in the DAG
+
+        Returns:
+            Tuple[bool, Dict[str, int]]: Success flag and usage metrics from backtracking
+        """
+        backtrack_candidate = self._find_backtrack_candidate(
+            failed_node_id, nodes)
+
+        if not backtrack_candidate:
+            Logger().debug(
+                f"No backtrack candidate found for failed node {failed_node_id}")
+            return False, {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+
+        backtrack_node = nodes[backtrack_candidate]
+
+        Logger().debug(
+            f"Attempting backtrack of node {backtrack_candidate} for failed node {failed_node_id}")
+
+        alternative_answer, alt_usage = self._extract_alternative_answer(
+            backtrack_node)
+
+        # Check if this is truly a new alternative (not N/A, not already tried)
+        if (alternative_answer != "N/A" and
+                alternative_answer not in backtrack_node.alternative_results):
+
+            # Update the node with alternative answer
+            backtrack_node.result = alternative_answer
+            # Add the new alternative to the list
+            backtrack_node.alternative_results.append(alternative_answer)
+
+            # Reset all dependent nodes (including the failed one)
+            self._reset_dependent_nodes(backtrack_candidate, nodes)
+
+            Logger().debug(
+                f"Successfully backtracked with alternative: {alternative_answer}")
+            return True, alt_usage
+
+        # No new alternative found - mark this node as having exhausted alternatives
+        backtrack_node.alternatives_exhausted = True
+        Logger().debug(f"Backtracking failed for node {failed_node_id}")
+        return False, alt_usage
 
     def _synthesize_final_answer(
         self,
@@ -384,9 +614,11 @@ keywords related to the question.",
         sub_results = []
         for node in nodes.values():
             if node.is_completed and node.result:
-                sub_results.append(f"- {node.sub_question}: {node.result}")
+                sub_results.append(f"- {node.formulated_question}: {node.result}")
 
         user_content = f"Question: {original_question}\n\nSub-question Results:\n{chr(10).join(sub_results)}"
+
+        Logger().debug(f"Synthesizing final answer with content: {user_content}")
 
         open_ai_request = {
             "custom_id": "dag_synthesis",
@@ -499,7 +731,7 @@ keywords related to the question.",
         # Parse the DAG plan
         nodes = self._parse_dag_plan(response_content)
 
-        # Phase 2: Execute DAG nodes
+        # Phase 2: Execute DAG nodes with immediate backtracking
         iteration = 0
         stop = False
         while iteration < self._max_iterations:
@@ -526,16 +758,25 @@ keywords related to the question.",
                     folder_id = f"node_{node_id}"
                     sources[folder_id] = list(node_sources)
 
-                # If a node fails, we stop further execution
-                # We hope for the best once the answer is synthesized with all available info
+                # Check if node failed and attempt backtracking
                 if node.is_failed:
-                    Logger().warn(
-                        f"Node {node.node_id} failed to produce an answer. Abandoning further execution."
-                    )
+                    Logger().debug(
+                        f"Node {node_id} failed, attempting backtracking")
+                    backtrack_success, backtrack_usage = self._attempt_backtrack(
+                        node_id, nodes)
+
+                    # Add backtracking usage metrics
+                    for key in usage_metrics:
+                        usage_metrics[key] += backtrack_usage.get(key, 0)
+
+                    if backtrack_success:
+                        break  # Break from node execution to restart with updated DAG state
+
                     stop = True
-                    break
+                    break  # No backtrack possible, exit execution loop
 
             if stop:
+                Logger().debug("Stopping DAG execution due to failure with no backtrack options")
                 break
 
             iteration += 1
@@ -590,7 +831,7 @@ class DAGAgent(BaseDAGAgent, MultiprocessingSearchAgent, ABC):
     """
 
     def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=16):
-        MultiprocessingSearchAgent.__init__(self, args, cores)
+        MultiprocessingSearchAgent.__init__(self, args, cores=12)
         BaseDAGAgent.__init__(self, search_function, args)
 
 
@@ -723,4 +964,21 @@ Iteration 3:
 
 You must keep trying to find an answer until instructed otherwise. At which point, you must provide the final answer. \
 If you cannot find an answer at that time, respond with "N/A" as the final answer.
+'''
+
+DAG_ALTERNATIVE_ANSWER_PROMPT = '''You are an expert assistant helping with a complex question decomposition and \
+reasoning process. The system is working on answering a larger, complex question by breaking it down into \
+smaller sub-questions arranged in a directed acyclic graph (DAG). A particular sub-question in this DAG has \
+failed to find a satisfactory answer using the initial approach, and the original answers listed have already \
+been tried without leading to successful completion of the reasoning chain.
+
+Your task is to examine the provided search results and find alternative answers that might \
+work better for continuing the reasoning process. Look for different entities, dates, locations, or concepts \
+that could answer the question, and consider alternative interpretations of the question. It's acceptable \
+to make assumptions if the documents support multiple valid interpretations.
+
+You should prioritize the documents that appear first in the search results as indicated by the numbering, \
+as they are likely more relevant.
+
+Explain your reasoning process and provide a concise alternative answer, or 'N/A' if no valid alternative definitely exists
 '''
