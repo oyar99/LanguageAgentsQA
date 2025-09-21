@@ -80,6 +80,12 @@ def chat_completions(
                 f"Chat completion for job {job['custom_id']} with model {job['model']} completed"
             )
 
+            if completion.choices[0].message.content is None:
+                Logger().warn(
+                    f"Chat completion content is None for job {job['custom_id']}"
+                )
+                Logger().debug(f"Completion object: {completion}")
+
         except BadRequestError as e:
             # Check if this is a ResponsibleAIPolicyViolation
             error_code = None
