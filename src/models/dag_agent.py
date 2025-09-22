@@ -3,7 +3,7 @@ A DAG-based agent that decomposes questions into directed acyclic graphs.
 Each node represents a sub-question that must be answered to reach the final answer.
 """
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code, too-many-lines
 
 from abc import ABC
 import json
@@ -294,6 +294,7 @@ keywords related to the question.",
 
         return bool(set(available_tools) & tool_supporting_commands)
 
+    # pylint: disable-next=too-many-locals
     def _query_dag_agent(
         self,
         user_query: str,
@@ -1105,7 +1106,7 @@ class DAGAgent(BaseDAGAgent, MultiprocessingSearchAgent, ABC):
     """
 
     def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=16):
-        MultiprocessingSearchAgent.__init__(self, args, cores=3)
+        MultiprocessingSearchAgent.__init__(self, args, cores=cores)
         BaseDAGAgent.__init__(self, search_function, args)
 
 
