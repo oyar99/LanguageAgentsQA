@@ -320,7 +320,7 @@ keywords related to the question.",
         if dag_state:
             system_prompt = f"{system_prompt}\n## Current DAG State\n\n{dag_state}"
 
-        Logger().debug(f"""DAG Agent system prompt: 
+        Logger().debug(f"""DAG Agent system prompt:
 {system_prompt}""")
 
         # Build dynamic schema based on available tools

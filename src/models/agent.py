@@ -113,7 +113,7 @@ class NoteBook:
             List[Dict[str, str]]: the messages in the notebook
         """
         return self._messages
-    
+
     def update_context(self, context: str) -> None:
         """
         Updates the notebook with the given context.
