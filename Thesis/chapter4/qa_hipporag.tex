@@ -1,16 +1,17 @@
 \begin{table}[ht]
     \centering
-        \adjustbox{max width=1.1\textwidth}{
+        \setlength{\tabcolsep}{3pt}
+        \resizebox{\textwidth}{!}{
         \begin{tabular}{lcccccccccccccccccccc}
             \toprule & \multicolumn{4}{c}{\textbf{HotpotQA}} & \multicolumn{4}{c}{\textbf{2Wiki}} & \multicolumn{4}{c}{\textbf{MuSiQue}} & \multicolumn{4}{c}{\textbf{Average}} \\
             \cmidrule(lr){2-5} \cmidrule(lr){6-9} \cmidrule(lr){10-13} \cmidrule(lr){14-17}
              & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ \\
             \midrule
             HippoRAG (QWen2.5-14B) & 34.3 & 48.0 & 25.7 & 53.0 & 14.7 & 23.0 & 12.5 & 23.0 & 12.5 & 20.2 & 11.9 & 19.0 & 20.5 & 30.4 & 16.7 & 31.7 \\
-            HippoRAG (GPT-4o-mini) & - & - & - & - & - & - & - & - & 25.3 & 36.7 & 22.8 & 34.0 & - & - & - & - \\
+            HippoRAG (GPT-4o-mini) & 46.0 & 61.0 & 34.4 & - & - & - & - & - & 25.3 & 36.7 & 22.8 & 34.0 & - & - & - & - \\
             \bottomrule
         \end{tabular}
         }
-    \caption{\small HippoRAG Question Answering performance.}
+    \caption{\small HippoRAG Question Answering performance with both QWen2.5-14B and GPT-4o-mini using Contriever as the embedding model.}
     \label{tab:qa_hippo_rag_results}
 \end{table}

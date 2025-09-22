@@ -18,15 +18,26 @@ We first evaluated the retrieval performance of our baseline systems introduced 
 
 \subsection{Cognitive Language Agents}
 
-\noindent We evaluated the retrieval performance of the language agent architectures introduced in Section \ref{agents_sec}. Unlike static retrieval baselines, these agents typically execute multiple searches while reasoning about a question, rather than issuing a single query. Consequently, the retrieved results form an unranked set of documents, and we evaluate performance using macro recall (R), macro precision (P), and macro $F_1$. Results are shown in Table \ref{tab:retrieval_results_agents}.
+\noindent We evaluated the retrieval performance of the language agent architectures introduced in Section \ref{agents_sec}. Unlike static retrieval baselines, these agents typically execute multiple searches while reasoning about a question, rather than issuing a single query. Consequently, the retrieved results form an unranked set of documents, and we evaluate performance using macro recall (R), macro precision (P), and macro $F_1$. 
 
-\input{chapter4/retrieval_results_agents}
+\noindent We start with experimenting with the strongest retrievers, ColBERTv2 and HippoRAG, for the QA Agent. We found that the agent achieved similar performance retrieval with both. Results are shown in Table \ref{tab:retrieval_results_qa_agent}.
 
-\noindent Even the simplest agent, the QA Agent, substantially outperforms all baselines on 2Wiki and MuSiQue. On MuSiQue, the QA Agent retrieves an average of $10.9$ unique documents per query, achieving a recall of $69.0$, compared to $60.6$ for ColBERTv2 at $k = 20$. On 2Wiki, the QA Agent retrieves $10.4$ unique documents on average and achieves a recall of $90.3$, representing a $15.8$ point improvement over msmarco-bert-base-dot-v5 at $k = 100$. In contrast, on LoCoMo, the QA Agent performs slightly worse, even when compared against $R@5$. 
+\input{chapter4/retrieval_results_qa_agent}
+
+\noindent Considering that we did not observe any significant difference between our two retrievers, we only tested ColBERTv2 on each of the QA Agent variants shown in Table \ref{tab:retrieval_results_qa_variants}.
+
+\input{chapter4/retrieval_results_qa_variants}
 
 \noindent The QA Agent with Re-ranking shows a modest drop in recall relative to the base agent, but its precision improves substantially. This indicates that the second-stage LLM-based retriever effectively prunes distractors, resulting in fewer irrelevant passages to reason over.
 
 \noindent The QA Agent with Pagination exhibits slight improvements in recall across datasets, though the gains are smaller than anticipated. We hypothesize that this is due to inherent limitations of the retriever. In particular, Weller et al.  show empirically that multi-vector retrievers such as ColBERTv2 can only represent a restricted set of top-$k$ rankings, limiting the benefit of retrieving beyond the initial candidate set \cite{weller2025theoreticallimitationsembeddingbasedretrieval}.
+
+\noindent We now compare the strongest QA Agent variant that implements reflection with the QA DAG Agent in Table \ref{tab:retrieval_results_agents}.
+
+\input{chapter4/retrieval_results_agents}
+
+\noindent Overall, even the simplest agent, the QA Agent, substantially outperforms all baselines on 2Wiki and MuSiQue. On MuSiQue, the QA Agent retrieves an average of $10.9$ unique documents per query, achieving a recall of $69.0$, compared to $60.6$ for ColBERTv2 at $k = 20$. On 2Wiki, the QA Agent retrieves $10.4$ unique documents on average and achieves a recall of $90.3$, representing a $15.8$ point improvement over msmarco-bert-base-dot-v5 at $k = 100$. In contrast, on LoCoMo, the QA Agent performs slightly worse, even when compared against $R@5$. 
+
 
 \section{Question Answering Results}
 
@@ -43,6 +54,12 @@ We first evaluated the retrieval performance of our baseline systems introduced 
 \input{chapter4/scores_qwen}
 
 \noindent We also test o3-mini using $k = 5$. As expected, o3-mini matches or outperforms other models with higher $k$ values, suggesting that reasoning ability plays a key role for MHQA task.
+
+\noindent For reference, we include results when only relevant documents are provided to the LLM directly in Table \ref{tab:qa_results_default}, and results when all the corpus is passed to the LLM in Table \ref{tab:qa_results_fullcontext}.
+
+\input{chapter4/default}
+
+\input{chapter4/full-context}
 
 \noindent Detailed results for baseline configurations that use simple retrieval methods are provided in Table \ref{tab:qa_results}.
 

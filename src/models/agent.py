@@ -22,6 +22,7 @@ class NoteBook:
         self._questions = None
         self._usage_metrics = {}
         self._messages = []
+        self._context = None
 
     def update_notes(self, notes: str) -> None:
         """
@@ -112,6 +113,24 @@ class NoteBook:
             List[Dict[str, str]]: the messages in the notebook
         """
         return self._messages
+    
+    def update_context(self, context: str) -> None:
+        """
+        Updates the notebook with the given context.
+
+        Args:
+            context (str): the context to be added to the notebook
+        """
+        self._context = context
+
+    def get_context(self) -> Optional[str]:
+        """
+        Gets the context from the notebook.
+
+        Returns:
+            str: the context in the notebook
+        """
+        return self._context
 
 
 class Agent(ABC):

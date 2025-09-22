@@ -58,7 +58,7 @@ Numerous prompting methods have been developed to enhance the capabilities of LL
     \label{fig:react}
 \end{figure}
 
-\noindent For long documents, \textit{\textbf{PEARL}} (\textbf{P}lanning with \textbf{E}xecutable Actions for \textbf{R}easoning over \textbf{L}ong documents) introduces a multi-stage prompting strategy. First, the LLM generates a list of actions that could help answer a question. It then formulates a plan to execute these actions and follows the plan step by step, using the output of each action to inform the next, ultimately guiding the model to a final answer \cite{sun-etal-2024-pearl}. 
+\noindent For long documents, \textit{\textbf{PEARL}} (\textbf{P}lanning with \textbf{E}xecutable Actions for \textbf{R}easoning over \textbf{L}ong documents) introduces a three-stage prompting strategy. First, an LLM generates a list of text-based actions that could support answering a question. For example, an action might be ANALYZE(X, Y, CTX), which examines the relationship between entities X and Y within a given context CTX. Second, Given a question, the LLM produces a step-by-step plan using the previously generated actions. Finally, the LLM executes the plan on the full document, applying each action in order to generate the final answer. This framework is specifically designed to enhance comprehension and reasoning when operating over long contexts \cite{sun-etal-2024-pearl}. 
 
 \noindent Similarly, \textit{\textbf{Iterative Demonstration-Based RAG}}, proposed by Yue et al, addresses complex queries by decomposing them into simpler sub-queries. RAG is then applied to each sub-query independently, leading to improved performance over single-pass RAG methods \cite{yue2024inferencescalinglongcontextretrieval}.
 
@@ -66,7 +66,9 @@ Numerous prompting methods have been developed to enhance the capabilities of LL
 
 \subsection{Language Agents}
 
-Language Agents are autonomous systems that integrate LLMs for reasoning and communication, using language as their primary medium of interaction with both the environment and decision-making processes \cite{language-agent-tutorial}. Figure \ref{fig:cognitive-arch} provides a high-level overview of the cognitive architecture behind these systems.
+An agent is broadly defined as a system that can perceive its environment, reason about it, and autonomously take actions to achieve specific goals. Traditional agents have relied on symbolic reasoning or domain-specific heuristics, but recent advances in LLMs have enabled a new class of language agents.
+
+\noindent Language Agents are autonomous systems that integrate LLMs for reasoning and communication, using language as their primary medium of interaction with both the environment and decision-making processes \cite{language-agent-tutorial}. Figure \ref{fig:cognitive-arch} provides a high-level overview of the cognitive architecture behind these systems.
 
 \noindent A central component of language agents is memory, which allows them to store and retrieve information. This capability supports learning from experience, maintain coherence over long interactions, and making more informed decisions. Drawing inspiration from human cognition, memory in language agents is often categorized into four types: \textit{episodic memory}, which stores past experiences; \textit{semantic memory}, which encodes factual knowledge; \textit{procedural memory}, which captures rules or functions; and \textit{working memory}, which manages short-term, task-relevant information \cite{sumers2024cognitive}.
 
@@ -194,3 +196,26 @@ HippoRAG, briefly introduced in Section \ref{subsec:rag}, is a RAG system that a
 \noindent Their evaluation is based on a relatively small sample of 1,000 questions per dataset, making comparisons to other approaches difficult. More recent extensions propose incorporating both conceptual and contextual information into the graph and filtering triples to retain only the most relevant nodes during online retrieval \cite{gutiérrez2025ragmemorynonparametriccontinual}.
 
 \noindent In this work, we explore how cognitive language agents compare against such RAG frameworks, and further explore how they can be integrated into agentic workflows.
+
+\subsection{PAR RAG}
+
+PAR RAG is a RAG framework designed for MHQA tasks. It is composed of three modules: planning, acting, and review.
+
+\noindent The planning module generates a top-down plan that decomposes the original question into sub-questions using an LLM. 
+
+\noindent The action module executes the plan step by step using ColBERTv2 as the retriever. At each step, a preliminary answer is generated, which is then passed to the review stage.
+
+\noindent The review module verifies the credibility of the intermediate answer, correcting potential mistakes to prevent error propagation. To support this process, an additional retrieval step using the preliminary answer is triggered, providing relevant evidence that strengthens the review and validation.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.95\textwidth]{images/par_rag.eps}\\[-0.25cm]
+    \caption{PAR RAG framework: (i) Plan Phase, where an LLM decomposes the question into a structured sequences of sub-questions, (ii) Action Phase, where the plan is executed step by step, and intermediate results are produced, and (iii) Review Phase, where each intermediate answer is validated with an LLM to prevent error propagation \cite{zhang2025credibleplandrivenragmethod}.}
+    \label{fig:par_rag}
+\end{figure}
+
+\noindent This design makes the system more robust against reasoning or retrieval errors, as intermediate mistakes are less likely to cascade through the full reasoning chain. Once all sub-questions have been answered and verified, an LLM synthesizes the original question together with the intermediate results to generate the final answer.
+
+\noindent Empirical results show that PAR RAG outperforms previous RAG methods on challenging MHQA benchmarks. For example, it achieves nearly a 12-point improvement in $F_1$ score on MuSiQue compared to HippoRAG.
+
+\noindent In our work, we adopt similar architectural principles, but we frame them under the broader concept of cognitive language agents.

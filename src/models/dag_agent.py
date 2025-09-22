@@ -8,7 +8,7 @@ Each node represents a sub-question that must be answered to reach the final ans
 from abc import ABC
 import json
 import os
-from typing import Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
@@ -92,6 +92,7 @@ class DAGNode:
         # Track if we've exhausted all alternatives for this node
         self.alternatives_exhausted = False
         self.sources = []
+        self.context = ""
         self.unique_sources = []
         self.formulated_question = None
 
@@ -114,6 +115,11 @@ class DAGNode:
         # Add result if node is completed
         if self.is_completed and self.result:
             node_dict["result"] = self.result
+
+        # Add context (reasoning thought - conclusion) for completed nodes
+        # context is only not available for inferred results and failed nodes
+        if self.context:
+            node_dict["context"] = self.context
 
         # Add sources only when requested (for backtracking scenarios)
         if include_sources and self.unique_sources:
@@ -270,30 +276,67 @@ keywords related to the question.",
 
         return json.dumps(dag_state, indent=2)
 
+    def _commands_support_tools(self, available_tools: List[str] = None) -> bool:
+        """
+        Check if any of the available commands support tool invocation.
+
+        Args:
+            available_tools (List[str]): List of available command names
+
+        Returns:
+            bool: True if any command supports tools, False otherwise
+        """
+        if not available_tools:
+            return False
+
+        # Commands that support tool invocation
+        tool_supporting_commands = {"SOLVE"}
+
+        return bool(set(available_tools) & tool_supporting_commands)
+
     def _query_dag_agent(
         self,
         user_query: str,
         custom_id: str,
         dag_state: str = None,
         available_tools: List[str] = None
-    ) -> Tuple[str, Dict[str, int]]:
+    ) -> Tuple[Tuple[str, Optional[str], List[Any]], Dict[str, int]]:
         """
         Unified method to query the DAG execution agent with structured JSON response.
 
         Args:
-            user_query (str): The tool call query to send to the DAG agent (e.g., "REQUERY(node_id='node_1')")
+            user_query (str): The tool call query to send to the DAG agent (e.g., "SOLVE(node_id='node_1')")
             custom_id (str): Custom ID for the request
             dag_state (str): Optional DAG state to inject into the system prompt
             available_tools (List[str]): Optional list of tools to make available \
-(e.g., ["REQUERY", "ALTERNATIVE_ANSWER"])
+(e.g., ["SOLVE", "ALTERNATIVE_ANSWER"])
 
         Returns:
-            Tuple[str, Dict[str, int]]: Answer and usage metrics
+            Tuple[Tuple[str, str, List[Any]], Dict[str, int]]: Answer (answer, tool, tool_args) and usage metrics
         """
         # Build the system prompt with tool filtering and DAG state if provided
         system_prompt = self._build_system_prompt_with_tools(available_tools)
         if dag_state:
-            system_prompt = f"{system_prompt}\n\n## Current DAG State\n\n{dag_state}"
+            system_prompt = f"{system_prompt}\n## Current DAG State\n\n{dag_state}"
+
+        Logger().debug(f"""DAG Agent system prompt: 
+{system_prompt}""")
+
+        # Build dynamic schema based on available tools
+        schema_properties = {
+            "thought": {"type": "string"},
+            "answer": {"type": "string"}
+        }
+        required_fields = ["thought", "answer"]
+
+        # Add tool and query fields only for commands that support tools
+        if self._commands_support_tools(available_tools):
+            schema_properties["tool"] = {
+                "type": "string",
+                "description": "The tool to invoke, or null if providing an answer."
+            }
+            schema_properties["query"] = {"type": "string"}
+            required_fields.extend(["tool", "query"])
 
         request = {
             "custom_id": custom_id,
@@ -314,11 +357,8 @@ keywords related to the question.",
                     "name": "dag_agent_response",
                     "schema": {
                         "type": "object",
-                        "properties": {
-                            "thought": {"type": "string"},
-                            "answer": {"type": "string"}
-                        },
-                        "required": ["thought", "answer"],
+                        "properties": schema_properties,
+                        "required": required_fields,
                         "additionalProperties": False
                     }
                 }
@@ -332,6 +372,12 @@ keywords related to the question.",
             result.choices[0].message.content.strip())
 
         answer = structured_response['answer']
+        thought = structured_response['thought']
+        tool: Optional[str] = structured_response.get('tool', None)
+        tool_args = []
+
+        if tool is not None and tool.upper() == "SEARCH":
+            tool_args = [structured_response.get('query', '')]
 
         usage_metrics = {
             "completion_tokens": result.usage.completion_tokens,
@@ -340,63 +386,95 @@ keywords related to the question.",
         }
 
         Logger().debug(
-            f"DAG agent query result - Thought: {structured_response['thought']}, Answer: {answer}")
+            f"DAG agent query result - \
+Thought: {structured_response['thought']}, Answer: {answer}, Tool: {tool}, Tool Args: {tool_args}")
 
-        return answer, usage_metrics
+        return (answer, thought, tool, tool_args), usage_metrics
 
     def _build_system_prompt_with_tools(self, available_tools: List[str] = None) -> str:
         """
         Build the system prompt with only the specified tools available.
 
         Args:
-            available_tools (List[str]): List of tool names to include (e.g., ["REQUERY", "ALTERNATIVE_ANSWER"])
+            available_tools (List[str]): List of tool names to include (e.g., ["SOLVE", "ALTERNATIVE_ANSWER"])
 
         Returns:
             str: The filtered system prompt
         """
 
-        # Tool definitions mapping
-        tool_definitions = {
-            "REQUERY": """- REQUERY(node_id: str): Reformulate the sub-question for the given node ID \
-based on results from its dependencies. The reformulated question should be clear and self-contained, \
-not referencing node IDs. The returned question must be a string.""",
+        # Command definitions mapping
+        command_definitions = {
+            "SOLVE": """- SOLVE(node_id: str): Solve the sub-question for the given node ID using the \
+available information from its dependencies. If the information is not enough to answer the question, you must \
+invoke the SEARCH tool to find relevant documents using a query that contains all relevant keywords or entities \
+from the sub-question dependencies results and context.""",
 
             "ALTERNATIVE_ANSWER": """- ALTERNATIVE_ANSWER(node_id: str, exclude: List[str]): Provide an \
 alternative answer for the given node ID based on the sources provided. This answer must be different from \
-all other answers in the exclude list. However, it should be flexible in interpretation, and consider \
+all other answers in the exclude list. However, it should be FLEXIBLE in interpretation, and consider \
 plausible assumptions or entities in the sources. Only when all alternatives are definitely exhausted \
 should you return 'N/A'. The returned answer must be a string directly extracted or inferred from the \
 sources. Remember to exhaust all possible alternatives before returning 'N/A' even if they assume typos, \
 other interpretations, or entities that may not seem related at first glance.""",
 
             "FINAL_ANSWER": """- FINAL_ANSWER(original_question: str): Answer the original question based on \
-the state of the DAG. Incorporate the available information from each node to formulate a concise, accurate, \
-and complete answer. Provide an EXACT answer using only words found in the node results and sources when \
-possible. The response should be as brief as possible. Do not repeat the question in your answer. If the \
-information seems insufficient, provide the best possible answer based on the available information. \
-If definitely no answer can be found, respond with 'N/A'."""
+the state of the DAG. Incorporate the available information from each node to formulate a CONCISE, accurate, \
+and complete answer. Provide an EXACT answer using only words found in the results when \
+possible. The response should be as brief as possible. DO NOT REPEAT the question in your answer under any circumstances. \
+If the answer can be a single word (e.g., Yes, No, a date, or an object), please provide just that word. If the \
+information seems insufficient, please make plausible assumptions about the available information, assuming typos 
+or flexible interpretations. Only under extreme circumstances, if definitely no answer exists, respond with 'N/A'."""
         }
 
-        # Filter tools based on available_tools list
-        filtered_tools = []
+        # Filter commands based on available_tools list
+        filtered_commands = []
         for tool_name in available_tools:
-            if tool_name in tool_definitions:
-                filtered_tools.append(tool_definitions[tool_name])
+            if tool_name in command_definitions:
+                filtered_commands.append(command_definitions[tool_name])
 
-        # Build the prompt with only the specified tools
-        base_prompt = '''You are an intelligent DAG execution agent. You help with complex \
-reasoning questions related to a DAG (Directed Acyclic Graph) of sub-questions. Particularly, you assist \
-with the following requests.
-
-## Internal Tools
+        # Build the base prompt
+        base_prompt = '''You are an intelligent DAG execution agent that responds to commands only. \
+You help with complex commands related to a DAG (Directed Acyclic Graph) of sub-questions by thinking
+step-by-step about the command and the current state of the DAG. \
 
 '''
 
-        tools_section = "\n\n".join(filtered_tools)
+        # Add tools section only if any command supports tools
+        tools_section = ""
+        if self._commands_support_tools(available_tools):
+            tools_section = '''You have the following tools at your disposal to execute searches if required. \
+
+## Tools
+
+- SEARCH(query: str): Search for relevant documents for the given query using a semantic retriever. \
+Queries must explicitly mention entities or keywords related to the question to obtain relevant results. \
+Queries must not contain any node IDs.
+
+Example:
+
+{
+    "tool": "SEARCH",
+    "query": "What is the capital of France?"
+}
+
+When you do not invoke a tool, you must respond with the final answer for the provided command in the "answer" field, \
+and not include any tool calls.
+
+'''
+
+        # Commands section
+        commands_prompt = '''## Commands
+
+You respond to the following types of commands. If the user does not provide a valid command, respond with "Error: Invalid command". \
+Do not provide any explanations or additional text. Only respond with the exact output as specified for each command.
+
+'''
+
+        commands_section = "\n\n".join(filtered_commands)
 
         # Build examples section based on available tools
         examples = {}
-        examples["REQUERY"] = '''### Example 1
+        examples["SOLVE"] = '''### Example
 
 DAG Plan:
 [
@@ -413,18 +491,54 @@ DAG Plan:
     }
 ]
 
-REQUERY(node_id="node_2")
+SOLVE(node_id="node_2")
 
 Output:
 
 {
     "thought": "Node_2 depends on node_1, which found that Canyon Independent School District owns \
-Kimbrough Memorial Stadium. I need to replace the reference 'stadium identified in node 1' with the \
+Kimbrough Memorial Stadium. Since there is not enough informatiopn to answer sub-question "Where is the stadium identified in node 1 located?", \
+I need to invoke the SEARCH tool with a query that replaces the reference 'stadium identified in node 1 with the \
 actual stadium name.",
-    "answer": "Where is Kimbrough Memorial Stadium located?"
-}'''
+    "answer": "",
+    "tool": "SEARCH",
+    "query": "Where is Kimbrough Memorial Stadium located?"
+}
 
-        examples["ALTERNATIVE_ANSWER"] = '''### Example 2
+### Example
+
+DAG Plan:
+[
+    {
+        "node_id": "node_1",
+        "sub_question": "What is Luis Diaz's nationality?",
+        "dependencies": [],
+        "result": "Luiz Diaz is from Colombia."
+    },
+    {
+        "node_id": "node_2",
+        "sub_question": "What is Mohamed Salah nationality?",
+        "dependencies": [],
+        "result": "Mohamed Salah is from Egypt."
+    },
+    {
+        "node_id": "node_3",
+        "sub_question": "Are Luis Diaz and Mohamed Salah from the same country?",
+        "dependencies": ["node_1", "node_2"]
+    }
+]
+
+SOLVE(node_id="node_3")
+
+Output:
+{
+    "thought": "Node_3 depends on node_1 and node_2, which found that Luis Diaz is from Colombia \
+and Mohamed Salah is from Egypt. Since the two players are from different countries, I can answer the sub-question directly.",
+    "answer": "Luis Diaz is from Colombia and Mohamed Salah is from Egypt, so they are not from the same country."
+}
+'''
+
+        examples["ALTERNATIVE_ANSWER"] = '''### Example
 
 [
     {
@@ -463,10 +577,9 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
 
         examples_section = ""
         if filtered_examples:
-            examples_section = "\n\n## Examples\n\n" + \
-                "\n\n".join(filtered_examples)
+            examples_section = "\n\n".join(filtered_examples)
 
-        return f"{base_prompt}{tools_section}{examples_section}"
+        return f"{base_prompt}{tools_section}{commands_prompt}{commands_section}{examples_section}"
 
     def _get_dependent_nodes(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> List[str]:
         """
@@ -504,6 +617,7 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
                 dep_node.is_failed = False
                 dep_node.result = None
                 dep_node.alternatives_exhausted = False  # Reset alternatives exhausted flag
+                dep_node.context = ""
                 # Recursively reset nodes that depend on this one
                 self._reset_dependent_nodes(dep_node_id, nodes)
 
@@ -538,7 +652,7 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
 
         return None
 
-    def _extract_alternative_answer(self, node: DAGNode, nodes: Dict[str, DAGNode]) -> Tuple[str, Dict[str, int]]:
+    def _extract_alternative_answer(self, node: DAGNode, nodes: Dict[str, DAGNode]) -> Tuple[str, str, Dict[str, int]]:
         """
         Try to extract an alternative answer from a node's sources using the unified DAG execution agent.
 
@@ -546,7 +660,7 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
             node (DAGNode): The node to extract alternative answer from
 
         Returns:
-            Tuple[str, Dict[str, int]]: Alternative answer and usage metrics
+            Tuple[str, str, Dict[str, int]]: Alternative answer/thought and usage metrics
         """
         dag_state = self._serialize_dag_state(
             nodes, include_sources_for=[node.node_id])
@@ -560,12 +674,12 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
         Logger().debug(
             f"Extracting alternative answer with query: {user_query}")
 
-        alternative_answer, usage_metrics = self._query_dag_agent(
+        (alternative_answer, thought, _, _), usage_metrics = self._query_dag_agent(
             user_query, f"alternative_{node.node_id}", dag_state, available_tools=["ALTERNATIVE_ANSWER"])
 
         Logger().debug(
             f"Found alternative answer for node {node.node_id}: {alternative_answer}")
-        return alternative_answer, usage_metrics
+        return alternative_answer, thought, usage_metrics
 
     def _get_executable_nodes(self, nodes: Dict[str, DAGNode]) -> List[str]:
         """
@@ -593,16 +707,20 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
 
         return executable
 
-    def _formulate_question(self, node: DAGNode, nodes: Dict[str, DAGNode]) -> Tuple[Dict[str, int], str]:
+    def _attempt_solve_subquestion(
+        self,
+        node: DAGNode,
+        nodes: Dict[str, DAGNode]
+    ) -> Tuple[Dict[str, int], Tuple[str, str]]:
         """
-        Formulate the question for the current node using the unified DAG execution agent.
+        Attempts to solve the question for the current node using the unified DAG execution agent.
 
         Args:
             node (DAGNode): The current node
             nodes (Dict[str, DAGNode]): All nodes in the DAG
 
         Returns:
-            Tuple[Dict[str, int], str]: Usage metrics and the formulated question
+            Tuple[Dict[str, int], Tuple[str, str]]: Usage metrics and the response (answer, formulated_question)
         """
         # If question does not have deps, then we just return it as is
         if not node.dependencies:
@@ -610,21 +728,24 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
                 "completion_tokens": 0,
                 "prompt_tokens": 0,
                 "total_tokens": 0
-            }, node.sub_question
+            }, ("", node.sub_question)
 
         # Serialize current DAG state
         dag_state = self._serialize_dag_state(nodes)
 
-        # Use the new REQUERY tool format
-        user_query = f'REQUERY(node_id="{node.node_id}")'
+        # Use the SOLVE command
+        user_query = f'SOLVE(node_id="{node.node_id}")'
 
-        reformulated_query, usage_metrics = self._query_dag_agent(
-            user_query, f"dag_question_formulation_{node.node_id}", dag_state, available_tools=["REQUERY"])
+        (answer, _, tool, tool_args), usage_metrics = self._query_dag_agent(
+            user_query, f"dag_solve_subquestion_{node.node_id}", dag_state, available_tools=["SOLVE"])
 
         Logger().debug(
-            f"Node {node.node_id} reformulated query: {reformulated_query}")
+            f"Node {node.node_id} answer: {answer}, tool: {tool}, tool_args: {tool_args}")
 
-        return usage_metrics, reformulated_query
+        if tool == "SEARCH" and tool_args:
+            return usage_metrics, (None, tool_args[0])
+
+        return usage_metrics, (answer, node.sub_question)
 
     # pylint: disable-next=too-many-locals
     def _execute_node(
@@ -642,7 +763,20 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
         Returns:
             Tuple[Dict[str, int], List[RetrievedResult]]: Usage metrics and sources
         """
-        formulate_metrics, question = self._formulate_question(node, nodes)
+        formulate_metrics, (answer, question) = self._attempt_solve_subquestion(
+            node, nodes)
+
+        # If we have an answer directly, use it
+        if answer is not None and answer != "":
+            Logger().debug(
+                f"Node {node.node_id} solved directly with answer: {answer}")
+            node.result = answer
+            node.is_completed = True
+            node.alternative_results.append(answer)
+            return formulate_metrics, []
+
+        # If we do not have an answer for this sub-question, we invoke the search tool with the given query
+        # Search tool is another ReAct agent call that uses the given search function
 
         # Store the formulated question for potential backtracking
         node.formulated_question = question
@@ -651,6 +785,8 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
 
         answer = notebook.get_notes()
         sources = notebook.get_sources()
+        last_thought = notebook.get_context()
+
         total_usage_metrics = {
             "completion_tokens": (
                 formulate_metrics["completion_tokens"] +
@@ -685,6 +821,7 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
                 f"Node {node.node_id} succeeded with answer: {answer}")
             node.result = answer
             node.is_completed = True
+            node.context = last_thought
             node.alternative_results.append(answer)
 
         return total_usage_metrics, sources
@@ -713,7 +850,7 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
         Logger().debug(
             f"Attempting backtrack of node {backtrack_candidate} for failed node {failed_node_id}")
 
-        alternative_answer, alt_usage = self._extract_alternative_answer(
+        alternative_answer, thought, alt_usage = self._extract_alternative_answer(
             backtrack_node, nodes)
 
         # Check if this is truly a new alternative (not N/A, not already tried)
@@ -724,9 +861,18 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
             backtrack_node.result = alternative_answer
             # Add the new alternative to the list
             backtrack_node.alternative_results.append(alternative_answer)
+            # Update the context to indicate that we backtracked
+            backtrack_node.context += f"\nPrevious answer did not lead to a solution, \
+so I further analyzed the retrieved results for alternative answers: {thought}"
 
             # Reset all dependent nodes (including the failed one)
             self._reset_dependent_nodes(backtrack_candidate, nodes)
+
+            if len(backtrack_node.alternative_results) > 5:
+                Logger().warn(
+                    f"Node {backtrack_candidate} has more than 5 alternative answers, \
+which may indicate excessive backtracking.")
+                backtrack_node.alternatives_exhausted = True
 
             Logger().debug(
                 f"Successfully backtracked with alternative: {alternative_answer}")
@@ -737,6 +883,10 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
         # If no alternatives left, revert to original result as it is more likely correct
         backtrack_node.result = backtrack_node.alternative_results[
             0] if backtrack_node.alternative_results else None
+        # Update context
+        backtrack_node.context += f"""\nAll previous answers have not led to a solution, \
+so the best known answer for this question remains: {backtrack_node.result}"""
+
         Logger().debug(f"Backtracking failed for node {failed_node_id}")
         return False, alt_usage
 
@@ -755,12 +905,7 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
         Returns:
             Tuple[str, Dict[str, int]]: Final answer and usage metrics
         """
-        # Check if we have any completed nodes
-        has_completed_nodes = any(
-            node.is_completed and node.result for node in nodes.values())
-
-        if not has_completed_nodes:
-            return "N/A", {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+        # Try to synthesize final answer even if no nodes completed
 
         # Create DAG state with sources only for failed nodes
         failed_node_ids = [node_id for node_id, node in nodes.items()
@@ -774,7 +919,7 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
         Logger().debug(
             f"Synthesizing final answer with query: {user_query}")
 
-        final_answer, usage_metrics = self._query_dag_agent(
+        (final_answer, _, _, _), usage_metrics = self._query_dag_agent(
             user_query, "dag_synthesis", dag_state, available_tools=["FINAL_ANSWER"])
 
         return final_answer, usage_metrics
@@ -960,7 +1105,7 @@ class DAGAgent(BaseDAGAgent, MultiprocessingSearchAgent, ABC):
     """
 
     def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=16):
-        MultiprocessingSearchAgent.__init__(self, args, cores)
+        MultiprocessingSearchAgent.__init__(self, args, cores=3)
         BaseDAGAgent.__init__(self, search_function, args)
 
 

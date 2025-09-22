@@ -1,99 +1,88 @@
 \begin{table}[ht]
     \centering
-        \adjustbox{max width=1.1\textwidth}{
+        \setlength{\tabcolsep}{3pt}
+        \resizebox{\textwidth}{!}{
         \begin{tabular}{lcccccccccccccccccccc}
             \toprule
             & \multicolumn{4}{c}{\textbf{LoCoMo}} & \multicolumn{4}{c}{\textbf{HotpotQA}} & \multicolumn{4}{c}{\textbf{2Wiki}} & \multicolumn{4}{c}{\textbf{MuSiQue}} & \multicolumn{4}{c}{\textbf{Average}} \\
             \cmidrule(lr){2-5} \cmidrule(lr){6-9} \cmidrule(lr){10-13} \cmidrule(lr){14-17} \cmidrule(lr){18-21}
              & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ \\
             \midrule
-            $\text{GPT-4o-mini}^1$ & 36.0 & 66.1 & 37.5 & 62.0 & 63.7 & 77.2 & 43.6 & 78.0 & 56.9 & 64.2 & 43.6 & 63.0 & 46.5 & 54.8 & 37.5 & 52.0 & 50.1 & 65.6 & 40.6 & 63.8 \\
-            $\text{o3-mini}^1$ & 33.8 & 65.5 & 37.2 & 69.0 & 68.0 & 83.1 & 48.5 & 85.0 & 68.3 & 77.1 & 54.1 & 77.0 & 65.9 & 76.7 & 56.1 & 76.0 & 59.0 & 75.6 & 49.0 & 76.8 \\
-            $\text{Qwen2.5-14B}^1$ & 35.0 & 63.3 & 35.0 & 58.0 & 59.0 & 72.9 & 44.1 & 75.0 & 57.3 & 65.6 & 47.1 & 65.0 & 38.3 & 45.7 & 32.2 & 44.0 & 47.4 & 61.9 & 39.6 & 60.5 \\
+            \multicolumn{21}{c}{\textbf{K=5}} \\
             \midrule
-            $\text{GPT-4o-mini }(128k)^2$ & 16.7 & 40.6 & 21.8 & 43.0 & 42.0 & 54.1 & 29.7 & 54.3 & 30.0 & 35.0 & 22.5 & 33.0 & 19.5 & 29.7 & 15.2 & 23.0 & 27.1 & 39.9 & 22.3 & 38.3 \\
-            \midrule
-            \multicolumn{21}{c}{\textbf{\small K=5}} \\
-            \midrule
-            \multicolumn{21}{c}{\textbf{\small GPT-4o-mini}} \\
+            \multicolumn{21}{c}{\textbf{GPT-4o-mini}} \\
             \midrule
             BM25 & 23.3 & 43.9 & 23.6 & 39.0 & 36.2 & 44.6 & 25.1 & 45.0 & 26.3 & 28.8 & 21.6 & 26.0 & 7.6 & 10.3 & 5.6 & 9.0 & 23.4 & 31.9 & 19.0 & 29.8  \\
-            MSMarco-BERT & 22.5 & 44.3 & 22.8 & 41.0 & 34.7 & 43.1 & 22.7 & 43.0 & 28.1 & 31.0 & 21.6 & 28.0 & 10.7 & 15.2 & 8.8 & 12.0 & 24.0 & 33.4 & 19.0 & 31.0 \\
-            ColBERTV2 & 
+            msmarco-bert & 22.5 & 44.3 & 22.8 & 41.0 & 34.7 & 43.1 & 22.7 & 43.0 & 28.1 & 31.0 & 21.6 & 28.0 & 10.7 & 15.2 & 8.8 & 12.0 & 24.0 & 33.4 & 19.0 & 31.0 \\
+            ColBERTv2 & 
 \textbf{27.5} & \textbf{51.6} & \underline{27.3} & \underline{47.0} & 39.6 & 49.2 & 27.2 & 49.0 & 25.2 & 28.1 & 19.4 & 26.0 & 10.9 & 15.5 & 8.6 & 14.0 & 25.8 & 36.1 & 20.6 & 34.0 \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small o3-mini}} \\
+            \multicolumn{21}{c}{\textbf{o3-mini}} \\
             \midrule
             BM25 & 21.7 & 41.5 & 23.1 & 41.0 & 39.8 & 50.0 & \underline{29.3} & 52.0 & 28.7 & 30.6 & 22.3 & 29.0 & 16.3 & 20.9 & 13.5 & 19.0 & 26.7 & 35.8 & 22.1 & 35.3  \\
-            MSMarco-BERT & 20.7 & 43.0 & 22.5 & 44.0 & \underline{42.1} & \underline{52.5} & \underline{29.3} & \underline{54.0} & \textbf{31.6} & \textbf{34.2} & \underline{23.1} & \textbf{33.0} & \underline{19.6} & \underline{26.2} & \underline{16.4} & \underline{23.0} & \underline{28.6} & \underline{39.0} & \underline{22.8} & \underline{38.5} \\
-            ColBERTV2 & 
+            msmarco-bert & 20.7 & 43.0 & 22.5 & 44.0 & \underline{42.1} & \underline{52.5} & \underline{29.3} & \underline{54.0} & \textbf{31.6} & \textbf{34.2} & \underline{23.1} & \textbf{33.0} & \underline{19.6} & \underline{26.2} & \underline{16.4} & \underline{23.0} & \underline{28.6} & \underline{39.0} & \underline{22.8} & \underline{38.5} \\
+            ColBERTv2 & 
 \underline{25.6} & \underline{50.7} & \textbf{27.4} & \textbf{51.0} & \textbf{46.6} & \textbf{57.9} & \textbf{33.5} & \textbf{59.0} & 29.1 & 31.9 & 21.8 & \underline{31.0} & 
 \textbf{20.8} & \textbf{27.9} & \textbf{18.0} & \textbf{26.0} & \textbf{30.5} & \textbf{42.1} & \textbf{25.2} & \textbf{41.8} \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small Qwen2.5-14B}} \\
+            \multicolumn{21}{c}{\textbf{Qwen2.5-14B}} \\
             \midrule
             BM25 & 20.9 & 40.4 & 21.2 & 33.0 & 33.5 & 42.4 & 24.8 & 43.0 & 27.8 & 31.1 & 25.1 & 28.0 & 6.7 & 9.7 & 5.5 & 9.0 & 22.2 & 30.9 & 19.2 & 28.3  \\
-            MSMarco-BERT & 21.5 & 42.0 & 21.0 & 34.0 & 32.2 & 40.5 & 22.7 & 41.0 & \underline{29.9} & \underline{33.9} & \textbf{25.5} & \underline{31.0} & 8.4 & 12.6 & 7.2 & 10.0 & 23.0 & 32.3 & 19.1 & 29.0 \\
-            ColBERTV2 & 24.9 & 48.6 & 25.4 & 42.0 & 36.9 & 46.8 & 27.2 & 47.0 & 27.2 & 31.3 & 23.5 & 28.0 & 9.7 & 13.9 & 7.5 & 12.0 & 24.7 & 35.2 & 20.9 & 32.3 \\
+            msmarco-bert & 21.5 & 42.0 & 21.0 & 34.0 & 32.2 & 40.5 & 22.7 & 41.0 & \underline{29.9} & \underline{33.9} & \textbf{25.5} & \underline{31.0} & 8.4 & 12.6 & 7.2 & 10.0 & 23.0 & 32.3 & 19.1 & 29.0 \\
+            ColBERTv2 & 24.9 & 48.6 & 25.4 & 42.0 & 36.9 & 46.8 & 27.2 & 47.0 & 27.2 & 31.3 & 23.5 & 28.0 & 9.7 & 13.9 & 7.5 & 12.0 & 24.7 & 35.2 & 20.9 & 32.3 \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small K=10}} \\
+            \multicolumn{21}{c}{\textbf{K=10}} \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small GPT-4o-mini}} \\
+            \multicolumn{21}{c}{\textbf{GPT-4o-mini}} \\
             \midrule
             BM25 & 24.8 & 47.1 & 25.6 & 42.0 & \underline{41.2} & \underline{50.7} & 28.7 & \underline{51.0} & 29.8 & 32.6 & 24.2 & 30.0 & 9.0 & 12.8 & 6.9 & 11.0 & 26.2 & 35.8 & 21.4 & 33.5  \\
-            MSMarco-BERT & 24.9 & 47.9 & 25.0 & \underline{44.0} & 37.6 & 46.7 & 25.0 & 47.0 & \underline{31.0} & 34.2 & 24.2 & \underline{32.0} & 
+            msmarco-bert & 24.9 & 47.9 & 25.0 & \underline{44.0} & 37.6 & 46.7 & 25.0 & 47.0 & \underline{31.0} & 34.2 & 24.2 & \underline{32.0} & 
 \textbf{13.9} & \textbf{18.7} & \textbf{10.8} & \textbf{16.0} & \underline{26.9} & 36.9 & 21.3 & \underline{34.8} \\
-            ColBERTV2 & 
+            ColBERTv2 & 
 \textbf{27.3} & \textbf{53.0} & \textbf{28.3} & \textbf{47.0} & \textbf{43.2} & \textbf{53.4} & \textbf{29.7} & \textbf{53.0} & 27.9 & 31.2 & 21.9 & 29.0 & \underline{13.1} & \underline{17.4} & 
 \underline{9.9} & \underline{15.0} & \textbf{27.9} & \textbf{38.8} & \textbf{22.5} & \textbf{36.0} \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small Qwen2.5-14B}} \\
+            \multicolumn{21}{c}{\textbf{Qwen2.5-14B}} \\
             \midrule
             BM25 & 22.1 & 43.7 & 23.2 & 36.0 & 37.8 & 48.2 & 28.3 & 49.0 & 30.7 & \underline{34.6} & \underline{27.4} & \underline{32.0} & 8.7 & 12.6 & 7.0 & 11.0 & 24.8 & 34.8 & 21.5 & 32.0  \\
-            MSMarco-BERT & 22.4 & 44.7 & 21.8 & 37.0 & 34.8 & 44.1 & 24.8 & 44.0 & \textbf{32.4} & \textbf{37.0} & \textbf{27.9} & \textbf{34.0} & 12.2 & 17.2 & 
+            msmarco-bert & 22.4 & 44.7 & 21.8 & 37.0 & 34.8 & 44.1 & 24.8 & 44.0 & \textbf{32.4} & \textbf{37.0} & \textbf{27.9} & \textbf{34.0} & 12.2 & 17.2 & 
 9.6 & 14.0 & 25.5 & 35.8 & 21.0 & 32.3 \\
-            ColBERTV2 & 
+            ColBERTv2 & 
 \underline{25.4} & \underline{50.0} & \underline{25.8} & 42.0 & 39.8 & 50.5 & \underline{29.2} & \underline{51.0} & 29.8 & 34.5 & 25.7 & 31.0 & 11.7 & 16.6 & 9.0 & 14.0 & 26.7 & \underline{37.9} & \underline{22.4} & 34.5 \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small K=20}} \\
+            \multicolumn{21}{c}{\textbf{K=20}} \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small GPT-4o-mini}} \\
+            \multicolumn{21}{c}{\textbf{GPT-4o-mini}} \\
             \midrule
             BM25 & 25.4 & 49.2 & 26.0 & 45.0 & \underline{45.1} & \underline{55.3} & \underline{31.3} & \underline{56.0} & 30.8 & 34.0 & 25.1 & 31.0 & 10.9 & 15.1 & 8.3 & 13.0 & 28.1 & 38.4 & 22.7 & 36.3  \\
-            MSMarco-BERT & \underline{25.6} & 50.2 & 26.2 & \underline{47.0} & 40.0 & 49.5 & 26.6 & 50.0 & 32.7 & 36.1 & 25.8 & 33.0 & \textbf{15.5} & \textbf{20.6} & \textbf{12.4} & \textbf{18.0} & \underline{28.5} & 39.1 & 22.8 & \underline{37.0} \\
-            ColBERTV2 & 
+            msmarco-bert & \underline{25.6} & 50.2 & 26.2 & \underline{47.0} & 40.0 & 49.5 & 26.6 & 50.0 & 32.7 & 36.1 & 25.8 & 33.0 & \textbf{15.5} & \textbf{20.6} & \textbf{12.4} & \textbf{18.0} & \underline{28.5} & 39.1 & 22.8 & \underline{37.0} \\
+            ColBERTv2 & 
 \textbf{28.4} & \textbf{55.1} & \textbf{30.0} &  \textbf{51.0} & \textbf{46.0} & \textbf{56.7} & \textbf{31.5} & \textbf{57.0} & 31.5 & 35.2 & 24.9 & \underline{35.0} & \underline{14.4} & 19.0 & 11.1 & \underline{17.0} & \textbf{30.1} & \textbf{41.5} & \textbf{24.4} & \textbf{40.0} \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small Qwen2.5-14B}} \\
+            \multicolumn{21}{c}{\textbf{Qwen2.5-14B}} \\
             \midrule
             BM25 & 22.6 & 46.0 & 24.3 & 38.0 & 40.8 & 52.0 & 30.1 & 53.0 & 32.0 & 36.7 & 28.3 & 33.0 & 11.4 & 16.3 & 8.3 & 13.0 & 26.7 & 37.8 & 22.8 & 34.3  \\
-            MSMarco-BERT & 24.6 & 48.4 & 24.5 & 41.0 & 36.7 & 46.6 & 26.2 & 47.0 & \textbf{34.0} & \textbf{38.9} & \textbf{29.2} &  \textbf{36.0} & 13.9 & \underline{20.4} & \underline{11.2} & \underline{17.0} & 27.3 & 38.6 & 22.8 & 35.3 \\
-            ColBERTV2 & \underline{25.6} & \underline{52.2} & \underline{27.0} & 43.0 & 41.9 & 53.3 & 30.8 & 54.0 & \underline{33.1} & \underline{38.3} & \underline{28.6} & \underline{35.0} & 13.0 & 19.0 & 10.3 & 16.0 & 28.4 & \underline{40.7} & \underline{24.2} & \underline{37.0} \\
+            msmarco-bert & 24.6 & 48.4 & 24.5 & 41.0 & 36.7 & 46.6 & 26.2 & 47.0 & \textbf{34.0} & \textbf{38.9} & \textbf{29.2} &  \textbf{36.0} & 13.9 & \underline{20.4} & \underline{11.2} & \underline{17.0} & 27.3 & 38.6 & 22.8 & 35.3 \\
+            ColBERTv2 & \underline{25.6} & \underline{52.2} & \underline{27.0} & 43.0 & 41.9 & 53.3 & 30.8 & 54.0 & \underline{33.1} & \underline{38.3} & \underline{28.6} & \underline{35.0} & 13.0 & 19.0 & 10.3 & 16.0 & 28.4 & \underline{40.7} & \underline{24.2} & \underline{37.0} \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small K=100}} \\
+            \multicolumn{21}{c}{\textbf{K=100}} \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small GPT-4o-mini}} \\
+            \multicolumn{21}{c}{\textbf{GPT-4o-mini}} \\
             \midrule
             BM25 & \underline{27.5} & 53.4 & \underline{29.2} & 51.0 & \underline{46.1} & \underline{57.6} & \underline{31.8} & \underline{59.0} & 33.0 & 36.7 & 26.3 & 34.0 & 12.4 & 17.1 & 9.9 & 15.0 & 29.8 & 41.2 & 24.3 & 39.8  \\
-            MSMarco-BERT & 26.7 & \underline{53.9} & 28.5 & \underline{52.0} & 42.6 & 52.9 & 28.5 & 54.0 & \textbf{34.9} & 38.8 & 27.3 & \underline{36.0} & 
+            msmarco-bert & 26.7 & \underline{53.9} & 28.5 & \underline{52.0} & 42.6 & 52.9 & 28.5 & 54.0 & \textbf{34.9} & 38.8 & 27.3 & \underline{36.0} & 
 \textbf{15.5} & \underline{21.0} & \textbf{13.1} & \textbf{19.0} & \underline{29.9} & 41.7 & 24.4 & \underline{40.3} \\
-            ColBERTV2 & 
+            ColBERTv2 & 
 \textbf{29.2} & \textbf{56.7} & \textbf{31.2} & \textbf{54.0} & \textbf{47.5} & \textbf{59.2} & \textbf{32.7} & \textbf{60.7} & 33.4 & 37.5 & 26.1 & 35.0 & \underline{15.2} & 20.7 & \underline{11.9} & \textbf{19.0} & \textbf{31.3} & \textbf{43.5} & \textbf{25.5} & \textbf{42.2} \\
             \midrule
-            \multicolumn{21}{c}{\textbf{\small Qwen2.5-14B}} \\
+            \multicolumn{21}{c}{\textbf{Qwen2.5-14B}} \\
             \midrule
             BM25 & 23.5 & 47.9 & 24.8 & 40.0 & 42.0 & 54.2 & 31.0 & 55.0 & 33.3 & 38.8 & 28.4 & 35.0 & 10.6 & 18.0 & 9.0 & 14.0 & 27.3 & 39.7 & 23.3 & 36.0  \\
-            MSMarco-BERT & 24.8 & 50.0 & 25.2 & 41.0 & 39.2 & 50.7 & \underline{28.3} & 52.0 & \underline{34.7} & \underline{40.3} & \textbf{29.3} & \textbf{37.0} & 14.2 & \textbf{21.8} & 11.8 & \underline{18.0} & 28.2 & 40.7 & 23.7 & 37.0 \\
-            ColBERTV2 & 26.6 & 53.0 & 27.0 & 45.0 & 42.5 & 55.2 & 31.2 & 56.0 & \underline{34.7} & \textbf{40.7} & \textbf{29.3} & \textbf{37.0} & 12.5 & 19.7 & 10.3 & 16.0 & 29.1 & \underline{42.2} & \underline{24.5} & 38.5 \\
+            msmarco-bert & 24.8 & 50.0 & 25.2 & 41.0 & 39.2 & 50.7 & \underline{28.3} & 52.0 & \underline{34.7} & \underline{40.3} & \textbf{29.3} & \textbf{37.0} & 14.2 & \textbf{21.8} & 11.8 & \underline{18.0} & 28.2 & 40.7 & 23.7 & 37.0 \\
+            ColBERTv2 & 26.6 & 53.0 & 27.0 & 45.0 & 42.5 & 55.2 & 31.2 & 56.0 & \underline{34.7} & \textbf{40.7} & \textbf{29.3} & \textbf{37.0} & 12.5 & 19.7 & 10.3 & 16.0 & 29.1 & \underline{42.2} & \underline{24.5} & 38.5 \\
             \bottomrule
-            \multicolumn{16}{l}{\rule{0pt}{1.25em}
-            \text{$^1$ \footnotesize Only the supporting passages are passed to the LLM for answering the questions.}
-            } \\
-            \multicolumn{16}{l}{\rule{0pt}{0em}
-            \text{$^2$ \footnotesize The entire corpus is passed to the LLM for answering the question. The corpus may be truncated.}
-            }
         \end{tabular}
         }
-    \caption{\small Baseline Question Answering performance.}
+    \caption{Question Answering performance of standard RAG. Results are reported for different retrievers (BM25, ms-marco-bert-base-dot-v5, ColBERTv2), LLMs (GPT-4o-mini, o3-mini, QWen2.15-14B), and retrieval depths ($k \in \{5, 10, 20, 100\}$). }
     \label{tab:qa_results}
 \end{table}

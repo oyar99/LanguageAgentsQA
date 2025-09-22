@@ -1,0 +1,17 @@
+\begin{table}[ht]
+    \centering
+        \setlength{\tabcolsep}{3pt}
+        \resizebox{\textwidth}{!}{
+        \begin{tabular}{lcccccccccccccccccccc}
+            \toprule
+            & \multicolumn{4}{c}{\textbf{LoCoMo}} & \multicolumn{4}{c}{\textbf{HotpotQA}} & \multicolumn{4}{c}{\textbf{2Wiki}} & \multicolumn{4}{c}{\textbf{MuSiQue}} & \multicolumn{4}{c}{\textbf{Average}} \\
+            \cmidrule(lr){2-5} \cmidrule(lr){6-9} \cmidrule(lr){10-13} \cmidrule(lr){14-17} \cmidrule(lr){18-21}
+             & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ \\
+            \midrule
+            GPT-4o-mini & 16.7 & 40.6 & 21.8 & 43.0 & 42.0 & 54.1 & 29.7 & 54.3 & 30.0 & 35.0 & 22.5 & 33.0 & 19.5 & 29.7 & 15.2 & 23.0 & 27.1 & 39.9 & 22.3 & 38.3 \\
+            \bottomrule
+        \end{tabular}
+        }
+    \caption{FULL-CONTEXT setup Question Answering performance using GPT-4o-mini with a context window of $128k$ tokens.}
+    \label{tab:qa_results_fullcontext}
+\end{table}

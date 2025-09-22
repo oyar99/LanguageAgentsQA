@@ -1,0 +1,12 @@
+[
+    {
+        "node_id":"node_1",
+        "sub_question":"Who is the Green performer?",
+        "dependencies":[]
+    },
+    {
+        "node_id":"node_2",
+        "sub_question":"Who is the spouse of the person identified in node 1?",
+        "dependencies":["node_1"]
+    }
+]

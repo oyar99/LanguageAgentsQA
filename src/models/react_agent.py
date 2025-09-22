@@ -241,6 +241,7 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
 
         iteration = 0
         final_answer = None
+        final_thought = None
 
         usage_metrics = {
             "completion_tokens": 0,
@@ -300,6 +301,7 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
             thought = turn["thought"]
             actions = turn["actions"]
             final_answer = turn["final_answer"]
+            final_thought = thought if final_answer else None
 
             # If we reached max iterations and no final answer, force it to N/A
             # Do not execute any more actions to save cost
@@ -307,6 +309,7 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
                 Logger().warn(
                     f"Max iterations reached for question: {question} without a final answer.")
                 final_answer = "N/A"
+                final_thought = thought
                 break
 
             turn = {'thought': thought, 'actions': actions,
@@ -417,6 +420,7 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
         notebook.update_notes(final_answer)
         notebook.update_usage_metrics(usage_metrics)
         notebook.update_messages(messages)
+        notebook.update_context(final_thought)
 
         return notebook
 

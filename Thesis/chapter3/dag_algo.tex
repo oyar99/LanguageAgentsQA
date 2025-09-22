@@ -1,0 +1,70 @@
+\begin{algorithm}[H]
+\caption{QA DAG Agent Reasoning Procedure}
+\label{alg:qa-dag}
+\KwIn{Question $q$}
+\KwOut{Final answer $a$ and documents $\Sigma(v)$}
+
+\BlankLine
+\textbf{Phase 1: DAG Planning} \\
+$G=(V,E) \gets M(\texttt{plan}(q))$ \tcp*{LLM produces DAG of sub-questions $v \in V$ with dependencies $E$}
+
+\BlankLine
+\textbf{Phase 2: Execution Loop} \\
+$t \gets 0$\; 
+\ForEach{$v \in V$}{
+    $\text{ans}(v) \gets \emptyset$ \tcp*{answer of $v$}
+    $\tau(v) \gets \emptyset$ \tcp*{reasoning traces for $v$}
+    $\Sigma(v) \gets \emptyset$ \tcp*{supporting documents for $v$}
+    $\text{original\_ans}(v) \gets \emptyset$ \tcp*{first non-empty answer of $v$}
+}
+$U \gets \{ v \in V \mid v \text{ has no incoming edges} \}$\;
+
+\While{$t < T \ \text{and } U \neq \emptyset$}{
+    $\text{restart} \gets \text{false}$\;
+    \ForEach{$u \in U$}{
+        \uIf{$u$ is \textbf{inference}}{
+            $\text{ans}(u) \gets M(\texttt{answer}(u))$
+        }
+        \uElseIf{$u$ is \textbf{retrieval}}{
+            $(\text{ans}(u),\; \tau(u),\; \Sigma(u)) \gets A(u)$\;
+        }
+
+        $\text{original\_ans}(c) \gets \text{ans}(c)$\;
+        
+        \uIf{$\text{ans}(u) = \emptyset$}{  % node failed
+            % --- build ordered ancestor candidates (closest ancestors first)
+            $\text{Candidates} \gets \mathrm{sort}_{\uparrow\!\mathrm{dist}}\big(\text{Ancestors}(u)\big)$\;
+            \ForEach{$c \in \text{Candidates}$}{
+                \If{$\neg\text{exhausted}(c)$}{
+                    $\text{Alt} \gets M(\texttt{revise}(c))$\;
+                    \If{$\text{Alt} \neq \emptyset$}{
+                        $\text{ans}(c) \gets \text{Alt}$\;
+                        \ForEach{$v \in \text{Descendants}(c)$}{
+                            $\text{ans}(v) \gets \emptyset,\; \tau(v) \gets \emptyset,\;$
+                        }
+                        $\text{restart} \gets \text{true}$\;
+                        \textbf{break} % break Candidates loop
+                    }
+                    \uElse{
+                        $exhausted(c) \gets \text{true}$\;
+$\text{ans}(c) \gets \text{original\_ans}(c)$
+                    }
+                }
+            }
+            \If{$\text{restart}$}{ \textbf{break} } % break U loop to restart execution
+        }
+    } % end for each u in U
+
+    % recompute executable set and advance iteration
+    $U \gets \{ v \in V \mid \text{ans}(v) = \emptyset \ \text{and } \forall (u,v)\in E,\; \text{ans}(u) \neq \emptyset \}$\;
+    $t \gets t + 1$\;
+}
+
+\BlankLine
+\textbf{Phase 3: Answer Synthesis} \\
+$a \gets M(\texttt{synthesize}(\{\text{ans}(v),\tau(v)\}_{v\in V}))$\;
+
+\BlankLine
+\Return $a$ and $\Sigma(\cdot)$\;
+
+\end{algorithm}

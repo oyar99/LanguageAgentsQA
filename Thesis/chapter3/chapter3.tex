@@ -5,8 +5,7 @@
 
 In this section, we first present the datasets used in our evaluation study, followed by a description of the evaluation framework. This framework supports the development of both the baseline systems and the proposed cognitive language agents. The baseline results are further analyzed in \textit{Analyzing Retrieval Scaling in RAG Systems for Complex QA Benchmarks} \cite{RayoMosquera2025}, a study published as part of this broader research effort.
 
-\section{Methodology}
-\subsection{Datasets}
+\section{Datasets}
 
 To evaluate our language agents and baselines models, we use three  well-known benchmarks for the MHQA task, \textbf{HotpotQA} \cite{yang2018hotpotqa}, \textbf{2WikiMultiHopQA} \cite{ho-etal-2020-constructing}, and \textbf{MuSiQue} \cite{trivedi2021musique}. Although prior work has shown that \textbf{HotpotQA} does not always require genuine multi-hop reasoning, we include it to support comparison with prior work \cite{trivedi2021musique}.
 
@@ -18,14 +17,14 @@ To evaluate our language agents and baselines models, we use three  well-known b
 
 \input{chapter3/datasets_stats}
 
-\subsection{Evaluation Framework}
+\section{Evaluation Framework}
 \label{evaluation_framework_sec}
 
 We developed an evaluation framework in Python 3.13, publicly available at \href{https://github.com/oyar99/LanguageAgentsQA}{Language Agents QA}, designed to streamline experimentation with the datasets and to facilitate the implementation of both simple RAG baselines and more advanced language agent architectures.
 
 \noindent The framework supports two execution modes: prediction and evaluation. The \textit{orchestrator} is responsible for initiating the appropriate mode, initializing the dataset and agent, and executing the workflow. 
 
-\noindent Each agent implementation must adhere to a common interface that defines two methods: \textit{index} and \textit{reason}. In the \textit{index} method, the agent receives the preprocessed dataset and may construct an index as needed. In the \textit{reason} method, the agent receives a question and must return an object containing the final answer, the list of documents consulted during reasoning, and additional metadata such as token usage. 
+\noindent Each agent implementation must adhere to a common interface that defines two methods: \textit{index} and \textit{reason}. In the \textit{index} method, the agent receives the preprocessed dataset and executes any offline procedures. In the \textit{reason} method, the agent receives a question and must return an object containing the final answer, the list of documents consulted during reasoning, and additional metadata such as token usage. 
 
 \begin{figure}[h]
     \centering
@@ -38,11 +37,11 @@ We developed an evaluation framework in Python 3.13, publicly available at \href
 
 \noindent In evaluation mode, the script accepts a path to a JSONL file containing results and reports both retrieval and QA metrics, including recall, precision, $F_1$, recall@k, $EM$, $R_1$, $R_2$, and $L_1$.  
 
-\noindent Furthermore, the framework supports multiprocessing, enabling independent processing of questions. In our experiments, we usually leverage  up to 40 CPUs, substantially reducing runtime.
+\noindent Furthermore, the framework supports multiprocessing, enabling independent processing of questions. In our experiments, we usually leverage up to 40 CPUs, substantially reducing execution time.
 
 \noindent Finally, the framework integrates with vLLM, an inference and serving engine for LLMs. Any generative model available in vLLM can be used through the same interface as OpenAI's chat completions endpoint \cite{kwon2023efficient}.
 
-\subsection{Baselines}
+\section{Baselines}
 \label{baselines_sec}
 
 We evaluated a range of retrieval systems, including both traditional lexical and semantic retrievers, as well as more advanced methods.
@@ -65,25 +64,32 @@ We evaluated a range of retrieval systems, including both traditional lexical an
 
 \noindent All models were run with temperature set to $0$ to ensure outputs are as deterministic as possible, and frequency and presence penalties were also set to $0$. The maximum number of completion tokens was set to $500$, which we found sufficient, as most answers are brief. Additionally, we designated the newline character (\textbackslash n) as a stop token, since many models, particularly smaller ones, struggled to adhere to the output formatting instructions and often appended additional commentary.
 
-\subsection{Cognitive Language Agents}
+\section{Cognitive Language Agents}
 \label{agents_sec}
 
-Building on the evaluation framework, we design several language agent architectures aimed at improving QA performance. All agents are grounded in the \textbf{ReAct} framework, which interleaves reasoning and action. Actions typically correspond to search functions, and agents may also decompose complex questions into sub-questions to facilitate multi-step reasoning. The base prompt used to guide these agents is shown in Figure \ref{fig:agent_base_prompt}, and individual variants adapt it with specific tools, tool descriptions, or illustrative examples.
+Building on the evaluation framework, we design several language agent architectures aimed at improving QA performance. These agent are compared against baseline approaches, providing an analysis of their effectiveness, including discussion on system complexity, performance trade-offs, and resource efficiency.
 
-\subsubsection{QA Agent}
-
-\noindent The simplest variant defines a single action: retrieving relevant passages using ColBERTv2 with a fixed retrieval depth of $k = 5$. Once sufficient context is gathered, the agent produces an answer. This agent uses GPT-4o-mini, and includes two examples as context. The architecture is shown in Figure \ref{fig:qa_agent}.
-
-\begin{figure}[h]
+\begin{figure}[t]
     \centering
     \includegraphics[width=1\textwidth]{images/qa_agent}
     \caption{QA Agent architecture using ReAct.}
     \label{fig:qa_agent}
 \end{figure}
 
+\noindent Agents grounded in the \textbf{ReAct} framework interleave reasoning and action. Actions typically correspond to search functions, and agents may also decompose complex questions into sub-questions to facilitate multi-step reasoning. The base prompt used to guide these agents is shown in Figure \ref{fig:agent_base_prompt}, and individual variants adapt it with specific tools, tool descriptions, or illustrative examples.
+
+\subsection{QA Agent}
+\label{sec:qa_agent}
+
+\noindent A \textbf{ReAct} agent uses a language model $M$ to reason and interact with the environment, where a single single action is defined to retrieve relevant passages using a retriever $R$. Once sufficient context is gathered, the agent produces an answer. The agent uses 2-shot prompting to guide its reasoning and acting. The architecture is shown in Figure \ref{fig:qa_agent}.
+
+\noindent In our experiments, we test with language model $M$, GPT-4o-mini, and retrievers $R$: ColBERTv2 and HippoRAG both retrieving 5 documents per query.
+
+\noindent We implement minor variants to experiment introduced below.
+
 \subsubsection{QA Agent with Re-ranking}
 
-\noindent This agent extends the QA agent by introducing an LLM-based second-stage retriever that re-ranks the initial retrieval set. The retriever prioritizes higher-quality evidence and discards distractors before reasoning proceeds, thereby improving retrieval precision. Both the second-stage retriever and the agent are tested with GPT-4o-mini. The agent is shown in Figure \ref{fig:qa_reranking_agent}.
+\noindent This agent introduces an LLM-based second-stage retriever that re-ranks the initial retrieval set. The retriever prioritizes higher-quality evidence and discards distractors before reasoning proceeds, thereby improving retrieval precision. The second-stage retriever is tested with GPT-4o-mini. The agent is shown in Figure \ref{fig:qa_reranking_agent}.
 
 \begin{figure}[h]
     \centering
@@ -94,9 +100,51 @@ Building on the evaluation framework, we design several language agent architect
 
 \subsubsection{QA Agent with Pagination}
 
-\noindent This variant augments the search tool with a \textit{page} parameter, allowing the agent to retrieve additional results beyond the initial retrieval set. For example, calling \textit{search('northwestern Somalia', 2)} returns passages ranked from position 6 to 10. This mechanism enables exploration of a broader retrieval space when necessary.
+\noindent This variant augments the search tool of the QA agent by introducing a \textit{page} parameter, allowing the agent to retrieve additional results beyond the initial retrieval set. For example, calling \textit{search('northwestern Somalia', 2)} returns passages ranked from position 6 to 10. This mechanism enables exploration of a broader retrieval space when necessary.
 
-\subsubsection{Cognitive Agent}
+\subsubsection{QA Agent with Self-Reflection}
+
+\noindent This variant incorporates a reflection mechanism that enables the agent to recognize when it is not making meaningful progress toward an answer. The agent records its ongoing reasoning steps in a separate episodic memory. After each reasoning iteration, it evaluates whether its recent thoughts have led to useful progress. If not, the agent pauses to analyze the retrieved observations to make inferences and formulate a new plan of action. Although simple, this mechanism helps redirect the agent's trajectory and maintain focus on the question.
+
+\subsection{QA DAG Agent}
+
+\noindent We take inspiration on frameworks such as \textit{PAR RAG} \cite{zhang2025credibleplandrivenragmethod} and \textit{Plan-and-Solve} \cite{wang-etal-2023-plan} to design an agent that begins by constructing a plan in the form of a Directed Acyclic Graph (DAG). This is achieved by explicitly prompting a language model $M$ to build a graph $G$ that identifies sub-questions and clearly defines the order in which they must be answered.
+
+\noindent Once the DAG is constructed, we define an execution loop that runs up to $T$ times or until all nodes in the graph are completed. At each iteration, the loop selects nodes with no incoming edges, sub-questions without unresolved dependencies, and prompts $M$ to solve them. Nodes can be of two types: (i) inference questions, whose answers can be derived from completed dependencies, or (ii) retrieval questions, which require additional information. For the latter, the model executes an \textit{ANSWER} function $A(q)$ that returns a tuple consisting of the answer, a reasoning trace, and the retrieved documents for query $q$. If $A(q)$ yields a valid answer, the node is marked as \textit{completed} and annotated with the trace and documents. Otherwise, it is marked as \textit{failed}.
+
+\noindent When a node fails, the agent attempts to backtrack. It traverses upward to ancestor nodes and prompts $M$ to propose alternative answers based on the documents attached to those nodes. If plausible alternatives are found, all descendant nodes are reset and the exploration restarts. If no alternatives are found, the ancestor node is restored to its original completed state. Each of these recovery attempts is recorded in the reasoning trace. Once no more alternatives exist for a node, it is marked as \textit{exhausted}, and backtracking continues until either new alternatives are found or we reach a node with no dependencies, at which point the loop eventually exits.
+
+\noindent When the execution loop terminates, either because it has been forcibly exited or all nodes have been successfully completed, the model $M$ synthesizes a final answer based on the state of $G$. In cases where $G$ contains failed nodes, the de-serialized structure includes the failed nodes documents, though dependencies may be incomplete, limiting the chance of a correct final answer.
+
+\noindent This procedure is formalized in Algorithm \ref{alg:qa-dag}, which details the planning, execution, and synthesis phases of the agent. 
+
+\input{chapter3/dag_algo}
+
+\noindent The DAG itself serves as the agent's episodic memory, storing sub-questions, reasoning traces, answers, and retrieved documents. Unlike frameworks such as ReAct, which make it difficult to detect reasoning or retrieval errors during execution, our approach leverages a programmatically assisted procedure that deterministically identifies and recovers from such errors. 
+
+\noindent Our backtracking mechanism can be interpreted as a form of reflection where the agent revisits only ancestor nodes and evaluates plausible alternatives within a bounded search space, enabling the agent to correct earlier missteps in a controlled manner.
+
+\noindent For example, our approach is able to correctly identify expected answers for questions that involve conflicting information. Consider the MuSiQue question \textit{Who is the spouse of the Green performer?}, for which the model generates the plan illustrated in Figure \ref{fig:dag_example}.
+
+\begin{figure}[h]
+    \centering
+    \lstinputlisting{./chapter3/dag_example.txt}
+    \caption{DAG plan generated for question \textit{Who is the spouse of the Green performer?}.}
+    \label{fig:dag_example}
+\end{figure}
+
+\noindent When the agent attempts to solve sub-question $node_1$, it retrieves the following documents.
+
+\begin{quote}
+    - \textit{Chuck Green}: "Chuck Green" (November 6, 1919 - March 7, 1997) was an American tap dancer.\\
+    - \textit{Green (Steve Hillage album)}: Green is the fourth studio album by British progressive rock musician Steve Hillage.
+\end{quote}
+
+\noindent Initially, the agent selects the first document and answers \textit{Chuck Green}. However, when addressing $node_2$, it fails to find information about Chuck Green's spouse, since that information is not available in the corpus. At this point, the agent backtracks, recognizes that an alternative answer (\textit{Steve Hillage, performer of the album Green}) was plausible, and resumes execution. This correction ultimately leads the agent to the expected answer \textit{MiQuette Giraudy}.
+
+\noindent In our experiments we use GPT-4o-mini and GPT-4.1-mini as the language model $M$. The function $A(q)$ is implemented using the QA Agent introduced in Section \ref{sec:qa_agent}, with ColBERTv2 as the retriever. This architecture furthers allows decoupling reasoning and execution, where larger models can be used for generating the DAG or synthesizing answers, while smaller models handle sub-question solving, a flexibility not easily achieved with ReAct-style agents.
+
+\subsection{Cognitive Agent}
 
 \noindent We propose a cognitive language agent that incorporates episodic memory to store information about the questions it has answered during its lifetime. Unlike the previously described agents, this agent lifetime extends beyond a single QA session. The memory schema is shown in Figure \ref{fig:mem-schema}.
 
@@ -107,23 +155,16 @@ Building on the evaluation framework, we design several language agent architect
     \label{fig:mem-schema}
 \end{figure}
 
-\begin{figure}[!htbp]
-    \centering
-    \lstinputlisting{./chapter3/prompt_base_agent.txt}
-    \caption{ReAct agent prompt.}
-    \label{fig:agent_base_prompt}
-\end{figure}
-
 \noindent Like the previous agents, it follows a ReAct loop, but with one key distinction, after generating an answer, the agent evaluates it against the ground truth, simulating a human-in-the-loop process. If the answer is correct, the reasoning trace is stored directly in memory. Otherwise, the agent reflects on the error, reconstructs a reasoning trace that would have led to the correct answer, and stores that instead.
 
-\noindent An example of this reasoning trace format is provided in Figure \ref{fig:reasoning_chain}. When the agent is presented with a new question, it searches for up to $4$ semantically similar questions it has processed before using all-MiniLM-L6-v2, an embedding model that maps text to a 384-dimensional space \cite{reimers-2019-sentence-bert}. It then uses these questions as context for the current question. Over time, this architecture allows the agent to learn from experience and improve its performance, particularly on questions similar to those it has encountered before. Figure \ref{fig:cognitive_agent} illustrates the overall workflow.
-
-\begin{figure}[h]
+\begin{figure}[!htbp]
     \centering
     \includegraphics[width=1\textwidth]{images/cognitive_agent.eps}
     \caption{Cognitive Agent architecture.}
     \label{fig:cognitive_agent}
 \end{figure}
+
+\noindent An example of this reasoning trace format is provided in Figure \ref{fig:reasoning_chain}. When the agent is presented with a new question, it searches for up to $4$ semantically similar questions it has processed before using all-MiniLM-L6-v2, an embedding model that maps text to a 384-dimensional space \cite{reimers-2019-sentence-bert}. It then uses these questions as context for the current question. Over time, this architecture allows the agent to learn from experience and improve its performance, particularly on questions similar to those it has encountered before. Figure \ref{fig:cognitive_agent} illustrates the overall workflow.
 
 \begin{figure}[h]
     \centering
@@ -132,12 +173,9 @@ Building on the evaluation framework, we design several language agent architect
     \label{fig:reasoning_chain}
 \end{figure}
 
-\subsubsection{Cognitive Agent - Search tools}
-
-\noindent We propose a hybrid retrieval cognitive agent that selects among multiple retrieval strategies, lexical, semantic, or graph-based, depending on the characteristics of the input query. As opposed to systems such AriGraph and HippoRAG, which rely on a single search mechanism \cite{anokhin2024arigraphlearningknowledgegraph}\cite{NEURIPS2024_6ddc001d}, our agent flexibly integrates different retrieval strategies, and learns progressively how to best leverage them by building on top of the Cognitive Agent architecture.
-
-\subsubsection{Multi-Agent Reflection}
-
-\noindent We design a multi-agent architecture where one agent, responsible for answering questions, interleaves reasoning, action, and feedback from another agent that verifies whether the reasoning process is correct. This interleaved reflection allows the reasoning agent to adjust its trajectory in real time based on feedback. We experiment with different models for each agent to obtain varying results.
-
-\noindent Finally, these agent are compared against baseline approaches, providing an analysis of their effectiveness, including discussion on system complexity, performance trade-offs, and resource efficiency.
+\begin{figure}[!htbp]
+    \centering
+    \lstinputlisting{./chapter3/prompt_base_agent.txt}
+    \caption{ReAct agent prompt.}
+    \label{fig:agent_base_prompt}
+\end{figure}
