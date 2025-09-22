@@ -93,6 +93,18 @@ Qwen/Qwen2.5-14B-Instruct # Specifies the LLM model to use
 
 ## How to run
 
+First, please ensure the following environment variables are defined.
+
+```sh
+AZURE_OPENAI_API_KEY= # Specifies the Azure OpenAI Key
+AZURE_OPENAI_ENDPOINT= # Specifies the Azure OpenAI Endpoint
+OPENAI_API_KEY= # Specifies the Azure OpenAI Key for HippoRAG
+SCRIPT_LOG_LEVEL= # Defines log level. INFO is default.
+CUDA_VISIBLE_DEVICES= # GPUs to use for computiation intensive tasks
+REMOTE_LLM= # Whether to use a remote LLM endpoint or a local endpoint (1) (0)
+LLM_ENDPOINT= # The LLM endpoint if using vLLM for inference
+```
+
 The script supports two execution modes:
 
 - `predict`: Generates answers for a given dataset.
