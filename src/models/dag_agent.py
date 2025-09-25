@@ -93,10 +93,11 @@ class DAGNode:
         self.alternatives_exhausted = False
         self.sources = []
         self.context = ""
+        self.context_history = []
         self.unique_sources = []
         self.formulated_question = None
 
-    def to_dict(self, include_sources: bool = False) -> Dict:
+    def to_dict(self, include_sources: bool = False, include_context: bool = True) -> Dict:
         """
         Serialize the DAG node to a dictionary for the DAG execution agent.
 
@@ -118,7 +119,7 @@ class DAGNode:
 
         # Add context (reasoning thought - conclusion) for completed nodes
         # context is only not available for inferred results and failed nodes
-        if self.context:
+        if include_context and self.context:
             node_dict["context"] = self.context
 
         # Add sources only when requested (for backtracking scenarios)
@@ -256,7 +257,7 @@ keywords related to the question.",
 
         return True
 
-    def _serialize_dag_state(self, nodes: Dict[str, DAGNode], include_sources_for: List[str] = None) -> str:
+    def _serialize_dag_state(self, nodes: Dict[str, DAGNode], include_sources_for: List[str] = None, exclude_context: bool = False) -> str:
         """
         Serialize the current DAG state for the execution agent.
 
@@ -272,7 +273,8 @@ keywords related to the question.",
         dag_state = []
         for node_id, node in nodes.items():
             include_sources = node_id in include_sources_for
-            dag_state.append(node.to_dict(include_sources=include_sources))
+            dag_state.append(node.to_dict(
+                include_sources=include_sources, include_context=not exclude_context))
 
         return json.dumps(dag_state, indent=2)
 
@@ -418,13 +420,12 @@ should you return 'N/A'. The returned answer must be a string directly extracted
 sources. Remember to exhaust all possible alternatives before returning 'N/A' even if they assume typos, \
 other interpretations, or entities that may not seem related at first glance.""",
 
-            "FINAL_ANSWER": """- FINAL_ANSWER(original_question: str): Answer the original question based on \
-the state of the DAG. Incorporate the available information from each node to formulate a CONCISE, accurate, \
-and complete answer. Provide an EXACT answer using only words found in the results when \
-possible. The response should be as brief as possible. DO NOT REPEAT the question in your answer under any circumstances. \
+            "FINAL_ANSWER": """- FINAL_ANSWER(question: str): Answer the given question based on \
+the available information from each node to formulate a CONCISE and COMPLETE answer. Provide an EXACT answer \
+using only words found in the results when possible. DO NOT REPEAT the question in your answer under any circumstances. \
 If the answer can be a single word (e.g., Yes, No, a date, or an object), please provide just that word. If the \
 information seems insufficient, please make plausible assumptions about the available information, assuming typos 
-or flexible interpretations. Only under extreme circumstances, if definitely no answer exists, respond with 'N/A'."""
+or flexible interpretations. Only if definitely no answer exists, respond with 'N/A'."""
         }
 
         # Filter commands based on available_tools list
@@ -570,6 +571,45 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
     "answer": "Liberty Stadium"
 }'''
 
+        examples["FINAL_ANSWER"] = '''### Example
+
+DAG Plan:
+[
+  {
+    "node_id": "node_1",
+    "sub_question": "What is Chris Menges' occupation?",
+    "dependencies": [],
+    "result": "cinematographer and director",
+    "context": "I found that Chris Menges is an English cinematographer and film director."
+  },
+  {
+    "node_id": "node_2",
+    "sub_question": "What is Aram Avakian's occupation?",
+    "dependencies": [],
+    "result": "film editor and director",
+    "context": "I found that Aram Avakian was an Armenian-American film editor and director."
+  },
+  {
+    "node_id": "node_3",
+    "sub_question": "Do Chris Menges and Aram Avakian have the same occupation?",
+    "dependencies": [
+      "node_1",
+      "node_2"
+    ],
+    "result": "Chris Menges is a cinematographer and film director, while Aram Avakian is a film editor and director, so they do not have the same occupation."
+  }
+]
+
+SOLVE(question="What occupation do Chris Menges and Aram Avakian share?")
+
+Output:
+{
+    "thought": "Aram Avakian was an Armenian-American film editor and director. Chris Menges is an English cinematographer and film director. \
+While they have different primary occupations, they both share the occupation of being a director.",
+    "answer": "director"
+}
+'''
+
         # Filter examples based on available tools
         filtered_examples = []
         for tool_name in available_tools:
@@ -622,36 +662,42 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
                 # Recursively reset nodes that depend on this one
                 self._reset_dependent_nodes(dep_node_id, nodes)
 
-    def _find_backtrack_candidate(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> str:
+    def _find_backtrack_candidates(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> List[str]:
         """
-        Find a dependency node that can be backtracked to find alternative answers.
+        Find all possible dependency nodes that can be backtracked to find alternative answers,
+        sorted by distance (closest ancestors first).
 
         Args:
             failed_node_id (str): The ID of the failed node
             nodes (Dict[str, DAGNode]): All nodes in the DAG
 
         Returns:
-            str: Node ID to backtrack to, or None if no backtrack candidate found
+            List[str]: List of node IDs to backtrack to, sorted by distance
         """
-        failed_node = nodes[failed_node_id]
+        def get_ancestors(node_id: str, distance: int = 0) -> List[Tuple[str, int]]:
+            """Get all ancestors of a node with their distances"""
+            ancestors = []
+            node = nodes[node_id]
 
-        # Look through dependencies to find one that might have alternative answers
-        for dep_id in failed_node.dependencies:
-            dep_node = nodes[dep_id]
-            # If the dependency node completed successfully and hasn't exhausted alternatives, it might have more
-            if dep_node.is_completed and dep_node.sources and not dep_node.alternatives_exhausted:
-                Logger().debug(
-                    f"Found backtrack candidate: {dep_id} for failed node {failed_node_id}")
-                return dep_id
+            for dep_id in node.dependencies:
+                dep_node = nodes[dep_id]
+                # Only consider nodes that completed successfully and have sources and aren't exhausted
+                if dep_node.is_completed and dep_node.sources and not dep_node.alternatives_exhausted:
+                    ancestors.append((dep_id, distance + 1))
 
-        # If no direct dependencies can be backtracked, check if any dependency has its own dependencies
-        for dep_id in failed_node.dependencies:
-            if nodes[dep_id].dependencies:
-                candidate = self._find_backtrack_candidate(dep_id, nodes)
-                if candidate:
-                    return candidate
+                # Recursively get ancestors of dependencies
+                ancestors.extend(get_ancestors(dep_id, distance + 1))
 
-        return None
+            return ancestors
+
+        # Get all ancestors with distances and sort by distance (ascending)
+        all_ancestors = get_ancestors(failed_node_id)
+        candidates = [ancestor_id for ancestor_id,
+                      _ in sorted(all_ancestors, key=lambda x: x[1])]
+
+        Logger().debug(
+            f"Found backtrack candidates for {failed_node_id}: {candidates}")
+        return candidates
 
     def _extract_alternative_answer(self, node: DAGNode, nodes: Dict[str, DAGNode]) -> Tuple[str, str, Dict[str, int]]:
         """
@@ -664,7 +710,7 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
             Tuple[str, str, Dict[str, int]]: Alternative answer/thought and usage metrics
         """
         dag_state = self._serialize_dag_state(
-            nodes, include_sources_for=[node.node_id])
+            nodes, include_sources_for=[node.node_id], exclude_context=True)
 
         # Format the exclude list for the ALTERNATIVE_ANSWER tool
         exclude_list = str(node.alternative_results)
@@ -823,6 +869,7 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
             node.result = answer
             node.is_completed = True
             node.context = last_thought
+            node.context_history.append(last_thought)
             node.alternative_results.append(answer)
 
         return total_usage_metrics, sources
@@ -830,6 +877,7 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
     def _attempt_backtrack(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> Tuple[bool, Dict[str, int]]:
         """
         Attempt to backtrack when a node fails by finding alternative answers in dependencies.
+        Tries all candidates sorted by distance until one succeeds.
 
         Args:
             failed_node_id (str): The ID of the failed node
@@ -838,58 +886,73 @@ the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative a
         Returns:
             Tuple[bool, Dict[str, int]]: Success flag and usage metrics from backtracking
         """
-        backtrack_candidate = self._find_backtrack_candidate(
+        # Get all backtrack candidates sorted by distance (closest ancestors first)
+        backtrack_candidates = self._find_backtrack_candidates(
             failed_node_id, nodes)
 
-        if not backtrack_candidate:
+        if not backtrack_candidates:
             Logger().debug(
-                f"No backtrack candidate found for failed node {failed_node_id}")
+                f"No backtrack candidates found for failed node {failed_node_id}")
             return False, {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
-        backtrack_node = nodes[backtrack_candidate]
+        total_usage = {"completion_tokens": 0,
+                       "prompt_tokens": 0, "total_tokens": 0}
 
-        Logger().debug(
-            f"Attempting backtrack of node {backtrack_candidate} for failed node {failed_node_id}")
-
-        alternative_answer, thought, alt_usage = self._extract_alternative_answer(
-            backtrack_node, nodes)
-
-        # Check if this is truly a new alternative (not N/A, not already tried)
-        if (alternative_answer != "N/A" and
-                alternative_answer not in backtrack_node.alternative_results):
-
-            # Update the node with alternative answer
-            backtrack_node.result = alternative_answer
-            # Add the new alternative to the list
-            backtrack_node.alternative_results.append(alternative_answer)
-            # Update the context to indicate that we backtracked
-            backtrack_node.context += f"\nPrevious answer did not lead to a solution, \
-so I further analyzed the retrieved results for alternative answers: {thought}"
-
-            # Reset all dependent nodes (including the failed one)
-            self._reset_dependent_nodes(backtrack_candidate, nodes)
-
-            if len(backtrack_node.alternative_results) > 5:
-                Logger().warn(
-                    f"Node {backtrack_candidate} has more than 5 alternative answers, \
-which may indicate excessive backtracking.")
-                backtrack_node.alternatives_exhausted = True
+        # Try each candidate until we find one that works
+        for candidate_id in backtrack_candidates:
+            backtrack_node = nodes[candidate_id]
 
             Logger().debug(
-                f"Successfully backtracked with alternative: {alternative_answer}")
-            return True, alt_usage
+                f"Attempting backtrack of node {candidate_id} for failed node {failed_node_id}")
 
-        # No new alternative found - mark this node as having exhausted alternatives
-        backtrack_node.alternatives_exhausted = True
-        # If no alternatives left, revert to original result as it is more likely correct
-        backtrack_node.result = backtrack_node.alternative_results[
-            0] if backtrack_node.alternative_results else None
-        # Update context
-        backtrack_node.context += f"""\nAll previous answers have not led to a solution, \
-so the best known answer for this question remains: {backtrack_node.result}"""
+            alternative_answer, thought, alt_usage = self._extract_alternative_answer(
+                backtrack_node, nodes)
 
-        Logger().debug(f"Backtracking failed for node {failed_node_id}")
-        return False, alt_usage
+            # Add usage metrics regardless of success
+            for key in total_usage:
+                total_usage[key] += alt_usage.get(key, 0)
+
+            # Check if this is truly a new alternative (not N/A, not already tried)
+            if (alternative_answer != "N/A" and
+                    alternative_answer not in backtrack_node.alternative_results):
+
+                # Update the node with alternative answer
+                backtrack_node.result = alternative_answer
+                # Add the new alternative to the list
+                backtrack_node.alternative_results.append(alternative_answer)
+                # Update the context to indicate that we backtracked
+                backtrack_node.context = thought
+                # Add the new thought to context history
+                backtrack_node.context_history.append(thought)
+
+                # Reset all dependent nodes (including the failed one)
+                self._reset_dependent_nodes(candidate_id, nodes)
+
+                if len(backtrack_node.alternative_results) > 5:
+                    Logger().warn(
+                        f"Node {candidate_id} has more than 5 alternative answers, \
+which may indicate excessive backtracking.")
+                    backtrack_node.alternatives_exhausted = True
+
+                Logger().debug(
+                    f"Successfully backtracked with alternative: {alternative_answer}")
+                return True, total_usage
+
+            # This candidate is exhausted, mark it and continue to next candidate
+            backtrack_node.alternatives_exhausted = True
+            # Revert to first answer as it is more likely correct
+            if backtrack_node.alternative_results:
+                backtrack_node.result = backtrack_node.alternative_results[0]
+            # Revert to original context as well
+            backtrack_node.context = backtrack_node.context_history[0]
+
+            Logger().debug(
+                f"Candidate {candidate_id} exhausted, trying next candidate")
+
+        # All candidates exhausted
+        Logger().debug(
+            f"All backtrack candidates exhausted for failed node {failed_node_id}")
+        return False, total_usage
 
     def _synthesize_final_answer(
         self,
@@ -915,7 +978,7 @@ so the best known answer for this question remains: {backtrack_node.result}"""
             nodes, include_sources_for=failed_node_ids)
 
         # Use the new FINAL_ANSWER tool format
-        user_query = f'FINAL_ANSWER(original_question="{original_question}")'
+        user_query = f'FINAL_ANSWER(question="{original_question}")'
 
         Logger().debug(
             f"Synthesizing final answer with query: {user_query}")
@@ -1105,7 +1168,7 @@ class DAGAgent(BaseDAGAgent, MultiprocessingSearchAgent, ABC):
     A multiprocessing DAG agent.
     """
 
-    def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=16):
+    def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=2):
         MultiprocessingSearchAgent.__init__(self, args, cores=cores)
         BaseDAGAgent.__init__(self, search_function, args)
 
