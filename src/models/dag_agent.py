@@ -6,7 +6,6 @@ Each node represents a sub-question that must be answered to reach the final ans
 # pylint: disable=duplicate-code, too-many-lines
 
 from abc import ABC
-import json
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -17,9 +16,9 @@ from models.agent import (
     MultiprocessingSearchAgent,
     MultiprocessingStatefulSearchAgent,
     NoteBook,
-    SelfContainedAgent,
     SingleProcessAgent
 )
+from models.base_dag import BaseDAGAgent as BaseDag, BaseDAGNode, BASE_DAG_PROMPT, DEFAULT_DAG_JOB_ARGS
 from models.react_agent import BaseIntelligentAgent
 from models.retrieved_result import RetrievedResult
 from models.question_answer import QuestionAnswer
@@ -67,7 +66,7 @@ few-shot examples.
             "Batch reasoning is not implemented for ReactAgent Helper.")
 
 # pylint: disable-next=too-few-public-methods, too-many-instance-attributes
-class DAGNode:
+class DAGNode(BaseDAGNode):
     """
     Represents a node in the DAG structure.
     Each node contains a sub-question and tracks its dependencies and completion status.
@@ -82,19 +81,9 @@ class DAGNode:
             sub_question (str): The sub-question this node represents
             dependencies (List[str]): List of node IDs that must be completed before this node
         """
-        self.node_id = node_id
-        self.sub_question = sub_question
-        self.dependencies = dependencies or []
-        self.is_completed = False
-        self.is_failed = False
-        self.result = None
-        self.alternative_results = []  # Store alternative answers for backtracking
-        # Track if we've exhausted all alternatives for this node
-        self.alternatives_exhausted = False
-        self.sources = []
-        self.context = ""
+        super().__init__(node_id, sub_question, dependencies)
+        # Additional fields specific to original DAG agent
         self.context_history = []
-        self.unique_sources = []
         self.formulated_question = None
 
     def to_dict(self, include_sources: bool = False, include_context: bool = True) -> Dict:
@@ -103,6 +92,7 @@ class DAGNode:
 
         Args:
             include_sources (bool): Whether to include sources field (only needed for backtracking)
+            include_context (bool): Whether to include context field
 
         Returns:
             Dict: Serialized node data
@@ -131,7 +121,7 @@ class DAGNode:
         return node_dict
 
 
-class BaseDAGAgent(SelfContainedAgent, ABC):
+class BaseDAGAgent(BaseDag, ABC):
     """
     A DAG-based agent that decomposes questions into a directed acyclic graph structure.
     Each node represents a sub-question that needs to be answered sequentially based on dependencies.
@@ -149,134 +139,12 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
             search_function: Function that takes a query and returns (documents, sources, metrics)
             args: Agent arguments
         """
-        SelfContainedAgent.__init__(self, args)
+        super().__init__(search_function, args)
         self._search_function = search_function
         self._max_iterations = 8
 
-        actions = {
-            "search": Action(
-                "Search for relevant documents for the given query using a semantic retriever. \
-The function accepts a single string argument which is the search query. \
-You will obtain more relevant results by formulating queries scoped to specific entities or \
-keywords related to the question.",
-                search_function
-            )
-        }
+        Logger().debug(f"DAG Agent prompt: {BASE_DAG_PROMPT}")
 
-        self._react_agent = ReactAgent(actions, PROMPT_EXAMPLES_TOOLS, args)
-
-        Logger().debug(f"DAG Agent prompt: {DAG_AGENT_PROMPT}")
-
-    def index(self, _):
-        """
-        Index the dataset for the DAG agent.
-        """
-        # TODO: Workaround to ensure corpus is set for the ReactAgent engine
-        # Actual fix should be to re-design how react_agent returns results
-        # pylint: disable-next=protected-access
-        self._react_agent._corpus = self._corpus
-
-    def _parse_dag_plan(self, response_content: str) -> Dict[str, DAGNode]:
-        """
-        Parse the DAG plan from the model response.
-
-        Args:
-            response_content (str): The response from the model containing the DAG plan
-
-        Returns:
-            Dict[str, DAGNode]: Dictionary mapping node IDs to DAGNode objects
-        """
-        structured_response = parse_structured_response(response_content)
-
-        dag_data = structured_response['dag_plan']
-        nodes = {}
-
-        for node_data in dag_data:
-            node_id = node_data.get('node_id')
-            sub_question = node_data.get('sub_question')
-            dependencies = node_data.get('dependencies', [])
-
-            if not node_id or not sub_question:
-                raise ValueError(f"Invalid node data: {node_data}")
-
-            nodes[node_id] = DAGNode(node_id, sub_question, dependencies)
-
-        # Validate DAG structure (no cycles, valid dependencies)
-        if not self._validate_dag(nodes):
-            raise ValueError("Invalid DAG structure detected")
-
-        return nodes
-
-    def _validate_dag(self, nodes: Dict[str, DAGNode]) -> bool:
-        """
-        Validate that the node structure forms a valid DAG (no cycles).
-
-        Args:
-            nodes (Dict[str, DAGNode]): The nodes to validate
-
-        Returns:
-            bool: True if valid DAG, False otherwise
-        """
-        # Check for self-references and invalid dependencies
-        for node_id, node in nodes.items():
-            if node_id in node.dependencies:
-                Logger().error(f"Node {node_id} has self-dependency")
-                return False
-
-            for dep in node.dependencies:
-                if dep not in nodes:
-                    Logger().error(
-                        f"Node {node_id} depends on non-existent node {dep}")
-                    return False
-
-        # Check for cycles using DFS
-        visited = set()
-        rec_stack = set()
-
-        def has_cycle(node_id: str) -> bool:
-            if node_id in rec_stack:
-                return True
-            if node_id in visited:
-                return False
-
-            visited.add(node_id)
-            rec_stack.add(node_id)
-
-            for dep in nodes[node_id].dependencies:
-                if has_cycle(dep):
-                    return True
-
-            rec_stack.remove(node_id)
-            return False
-
-        for node_id in nodes:
-            if node_id not in visited:
-                if has_cycle(node_id):
-                    Logger().error("Cycle detected in DAG")
-                    return False
-
-        return True
-
-    def _serialize_dag_state(self, nodes: Dict[str, DAGNode], include_sources_for: List[str] = None, exclude_context: bool = False) -> str:
-        """
-        Serialize the current DAG state for the execution agent.
-
-        Args:
-            nodes (Dict[str, DAGNode]): All nodes in the DAG
-            include_sources_for (List[str]): List of node IDs to include sources for (backtracking scenarios)
-
-        Returns:
-            str: JSON representation of the DAG state
-        """
-        include_sources_for = include_sources_for or []
-
-        dag_state = []
-        for node_id, node in nodes.items():
-            include_sources = node_id in include_sources_for
-            dag_state.append(node.to_dict(
-                include_sources=include_sources, include_context=not exclude_context))
-
-        return json.dumps(dag_state, indent=2)
 
     def _commands_support_tools(self, available_tools: List[str] = None) -> bool:
         """
@@ -338,20 +206,24 @@ keywords related to the question.",
                 "type": "string",
                 "description": "The tool to invoke, or null if providing an answer."
             }
-            schema_properties["query"] = {"type": "string"}
+            schema_properties["query"] = {
+                "type": "string"
+            }
             required_fields.extend(["tool", "query"])
+
+        model = self._think_model if custom_id == 'dag_synthesis' else self._args.model
 
         request = {
             "custom_id": custom_id,
-            "model": self._args.model,
+            "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_query}
             ],
-            "temperature": default_job_args['temperature']
-            if supports_temperature_param(self._args.model) else None,
-            "frequency_penalty": default_job_args['frequency_penalty'],
-            "presence_penalty": default_job_args['presence_penalty'],
+            "temperature": DEFAULT_DAG_JOB_ARGS['temperature']
+            if supports_temperature_param(model) else None,
+            "frequency_penalty": DEFAULT_DAG_JOB_ARGS['frequency_penalty'],
+            "presence_penalty": DEFAULT_DAG_JOB_ARGS['presence_penalty'],
             "max_completion_tokens": 500,
             "response_format": {
                 "type": "json_schema",
@@ -622,83 +494,6 @@ While they have different primary occupations, they both share the occupation of
 
         return f"{base_prompt}{tools_section}{commands_prompt}{commands_section}{examples_section}"
 
-    def _get_dependent_nodes(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> List[str]:
-        """
-        Get all nodes that depend on the given failed node.
-
-        Args:
-            failed_node_id (str): The ID of the failed node
-            nodes (Dict[str, DAGNode]): All nodes in the DAG
-
-        Returns:
-            List[str]: List of node IDs that depend on the failed node
-        """
-        dependent_nodes = []
-        for node_id, node in nodes.items():
-            if failed_node_id in node.dependencies:
-                dependent_nodes.append(node_id)
-        return dependent_nodes
-
-    def _reset_dependent_nodes(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> None:
-        """
-        Reset all nodes that depend on the failed node back to incomplete state.
-
-        Args:
-            failed_node_id (str): The ID of the failed node
-            nodes (Dict[str, DAGNode]): All nodes in the DAG
-        """
-        dependent_nodes = self._get_dependent_nodes(failed_node_id, nodes)
-
-        for dep_node_id in dependent_nodes:
-            dep_node = nodes[dep_node_id]
-            if dep_node.is_completed or dep_node.is_failed:
-                Logger().debug(
-                    f"Resetting node {dep_node_id} due to failed dependency {failed_node_id}")
-                dep_node.is_completed = False
-                dep_node.is_failed = False
-                dep_node.result = None
-                dep_node.alternatives_exhausted = False  # Reset alternatives exhausted flag
-                dep_node.context = ""
-                # Recursively reset nodes that depend on this one
-                self._reset_dependent_nodes(dep_node_id, nodes)
-
-    def _find_backtrack_candidates(self, failed_node_id: str, nodes: Dict[str, DAGNode]) -> List[str]:
-        """
-        Find all possible dependency nodes that can be backtracked to find alternative answers,
-        sorted by distance (closest ancestors first).
-
-        Args:
-            failed_node_id (str): The ID of the failed node
-            nodes (Dict[str, DAGNode]): All nodes in the DAG
-
-        Returns:
-            List[str]: List of node IDs to backtrack to, sorted by distance
-        """
-        def get_ancestors(node_id: str, distance: int = 0) -> List[Tuple[str, int]]:
-            """Get all ancestors of a node with their distances"""
-            ancestors = []
-            node = nodes[node_id]
-
-            for dep_id in node.dependencies:
-                dep_node = nodes[dep_id]
-                # Only consider nodes that completed successfully and have sources and aren't exhausted
-                if dep_node.is_completed and dep_node.sources and not dep_node.alternatives_exhausted:
-                    ancestors.append((dep_id, distance + 1))
-
-                # Recursively get ancestors of dependencies
-                ancestors.extend(get_ancestors(dep_id, distance + 1))
-
-            return ancestors
-
-        # Get all ancestors with distances and sort by distance (ascending)
-        all_ancestors = get_ancestors(failed_node_id)
-        candidates = [ancestor_id for ancestor_id,
-                      _ in sorted(all_ancestors, key=lambda x: x[1])]
-
-        Logger().debug(
-            f"Found backtrack candidates for {failed_node_id}: {candidates}")
-        return candidates
-
     def _extract_alternative_answer(self, node: DAGNode, nodes: Dict[str, DAGNode]) -> Tuple[str, str, Dict[str, int]]:
         """
         Try to extract an alternative answer from a node's sources using the unified DAG execution agent.
@@ -828,7 +623,7 @@ While they have different primary occupations, they both share the occupation of
         # Store the formulated question for potential backtracking
         node.formulated_question = question
 
-        notebook = self._react_agent.reason(question)
+        notebook = self._subquestion_agent.reason(question)
 
         answer = notebook.get_notes()
         sources = notebook.get_sources()
@@ -906,7 +701,7 @@ While they have different primary occupations, they both share the occupation of
                 f"Attempting backtrack of node {candidate_id} for failed node {failed_node_id}")
 
             alternative_answer, thought, alt_usage = self._extract_alternative_answer(
-                backtrack_node, nodes)
+                backtrack_node, {backtrack_node.node_id: backtrack_node})
 
             # Add usage metrics regardless of success
             for key in total_usage:
@@ -1012,66 +807,17 @@ which may indicate excessive backtracking.")
         sources: Dict[str, List[RetrievedResult]] = {}
 
         # Phase 1: Generate DAG plan
-        open_ai_request = {
-            "custom_id": "dag_planning",
-            "model": self._args.model,
-            "messages": [
-                {"role": "system", "content": DAG_AGENT_PROMPT},
-                {"role": "user", "content": f"Question: {question}"}
-            ],
-            "temperature": default_job_args['temperature']
-            if supports_temperature_param(self._args.model) else None,
-            "frequency_penalty": default_job_args['frequency_penalty'],
-            "presence_penalty": default_job_args['presence_penalty'],
-            "max_completion_tokens": 1000,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "strict": True,
-                    "name": "dag_planner",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "reasoning": {"type": "string"},
-                            "dag_plan": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "node_id": {"type": "string"},
-                                        "sub_question": {"type": "string"},
-                                        "dependencies": {
-                                            "type": "array",
-                                            "items": {"type": "string"}
-                                        }
-                                    },
-                                    "required": ["node_id", "sub_question", "dependencies"],
-                                    "additionalProperties": False
-                                }
-                            }
-                        },
-                        "required": ["reasoning", "dag_plan"],
-                        "additionalProperties": False
-                    }
-                }
-            }
-        }
-
-        result = chat_completions([open_ai_request])[0][0]
+        response_content, planning_usage = self._create_dag_plan(
+            question, BASE_DAG_PROMPT, "dag_planning")
 
         # Update usage metrics
-        usage_metrics["completion_tokens"] += result.usage.completion_tokens
-        usage_metrics["prompt_tokens"] += result.usage.prompt_tokens
-        usage_metrics["total_tokens"] += result.usage.total_tokens
+        for key in usage_metrics:
+            usage_metrics[key] += planning_usage.get(key, 0)
 
-        response_content = result.choices[0].message.content.strip()
         messages.append({"role": "assistant", "content": response_content})
 
-        Logger().debug(
-            f"DAG planning response: {response_content} for question {question}")
-
         # Parse the DAG plan
-        nodes = self._parse_dag_plan(response_content)
+        nodes = self._parse_dag_plan(response_content, DAGNode)
 
         # Phase 2: Execute DAG nodes with immediate backtracking
         iteration = 0
@@ -1182,107 +928,3 @@ class StatefulDAGAgent(BaseDAGAgent, MultiprocessingStatefulSearchAgent, ABC):
         MultiprocessingStatefulSearchAgent.__init__(self, args, cores)
         BaseDAGAgent.__init__(self, search_function, args)
 
-
-# Default job arguments
-default_job_args = {
-    'temperature': 0.0,
-    'max_completion_tokens': 1000,
-    'frequency_penalty': 0.0,
-    'presence_penalty': 0.0
-}
-
-DAG_AGENT_PROMPT = '''You are an expert question decomposition agent. Your task is to analyze a complex \
-question and break it down into a directed acyclic graph (DAG) of sub-questions. Each sub-question should \
-build towards answering the main question, and should have clear dependencies on other sub-questions when needed. \
-The sub-questions must be as specific and focused as possible, hence they should contain only ONE question. Do \
-not combine or compound multiple questions in a single sub-question. Each sub-question must be identified \
-by a unique node ID that follows the pattern "node_N" where N is a number (e.g., node_1, node_2, etc.).
-Dependencies should reference the node IDs of other sub-questions that must be answered first.
-
-If the question can be answered directly without decomposition, create a single node with no dependencies.
-
-## EXAMPLES
-
-Question: "Were Scott Derrickson and Ed Wood of the same nationality?"
-
-Response:
-{
-    "reasoning": "To answer if Scott Derrickson and Ed Wood are of the same nationality, I need to find each person's nationality separately and then compare them.",
-    "dag_plan": [
-        {
-            "node_id": "node_1",
-            "sub_question": "What is Scott Derrickson's nationality?",
-            "dependencies": []
-        },
-        {
-            "node_id": "node_2",
-            "sub_question": "What is Ed Wood's nationality?",
-            "dependencies": []
-        }
-    ]
-}
-
-Question: "In which county is the stadium owned by Canyon Independent School District located?"
-
-Response:
-{
-    "reasoning": "I need to first find what stadium is owned by Canyon Independent School District, then find where that stadium is located, \
-and finally determine which county that location is in.",
-    "dag_plan": [
-        {
-            "node_id": "node_1",
-            "sub_question": "What stadium is owned by Canyon Independent School District?",
-            "dependencies": []
-        },
-        {
-            "node_id": "node_2",
-            "sub_question": "Where is the stadium identified in node 1 located?",
-            "dependencies": ["node_1"]
-        },
-        {
-            "node_id": "node_3",
-            "sub_question": "Which county is the location identified in node 2 in?",
-            "dependencies": ["node_2"]
-        }
-    ]
-}
-'''
-
-PROMPT_EXAMPLES_TOOLS = '''### Example
-
-Question: Which United States Vice President was in office during the time Alfred Balk served as secretary of the Committee?
-
-Iteration 1:
-```json
-{
-    "thought": "I need to find information about United States Vice Presidents and information about Alfred Balk during the time \
-he served as secretary.",
-    "actions": ["search('United States Vice Presidents')", "search('Alfred Balk's biography')"]
-}
-```
-
-Iteration 2:
-```json
-{
-    "thought": "I need to find information about United States Vice Presidents and information about Alfred Balk during the time \
-he served as secretary.",
-    "actions": ["search('United States Vice Presidents')", "search('Alfred Balk's biography')"]
-    "observations": [["Nelson Aldrich Rockefeller was an American businessman and politician who served as the 41st Vice President of the United States \
-from 1974 to 1977"], ["Alfred Balk was an American reporter. He served as the secretary of Nelson Rockefeller's Committee on the Employment of Minority \
-Groups in the News Media."]]
-}
-```
-
-Iteration 3:
-```json
-{
-    "thought": "I found that Nelson Rockefeller was Vice President from 1974 to 1977 and Alfred Balk served as secretary of the Committee on the Employment of Minority Groups \
-in the News Media under Vice President Nelson Rockefeller. Therefore, the answer is Nelson Rockefeller.",
-    "final_answer": "Nelson Rockefeller"
-}
-```
-
-You must keep trying to find an answer until instructed otherwise. At which point, you must provide the final answer. \
-If you cannot find an answer at that time, try to provide the best reasonable answer based on the retrieved documents even if incomplete. Otherwise respond \
-with "N/A" as the final answer.
-'''

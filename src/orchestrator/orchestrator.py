@@ -6,6 +6,7 @@ from agents.cognitive_agent.cognitive_agent import CognitiveAgent
 from agents.colbertv2.colbertv2 import ColbertV2
 from agents.colbertv2_reranker.colbertv2_reranker import ColbertV2Reranker
 from agents.dag_agent_custom.dag_agent_custom import DAGAgentCustom
+from agents.dag_agent_custom_v2.dag_agent_custom_v2 import DAGAgentCustomV2
 from agents.default.default import Default
 from agents.dense.dense import Dense
 from agents.hippo_rag.hippo_rag import HippoRAG
@@ -60,7 +61,8 @@ class Orchestrator:
             'lexical_semantic': LexicalSemanticAgent,
             'react_retriever': ReactRetriever,
             'cognitive': CognitiveAgent,
-            'dag_custom': DAGAgentCustom
+            'dag_custom': DAGAgentCustom,
+            'dag_custom_v2': DAGAgentCustomV2,
         }
 
         if args.agent not in agents:

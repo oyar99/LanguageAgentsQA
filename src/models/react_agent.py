@@ -8,7 +8,7 @@ from inspect import signature
 import json
 import os
 from string import Template
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
@@ -39,7 +39,7 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
     Please make sure the examples adhere to the ReACT framework and are formatted correctly for better results.
     """
 
-    def __init__(self, actions: Dict[str, Action], examples: str, args):
+    def __init__(self, actions: Dict[str, Action], examples: str, args, custom_prompt: Optional[str] = None):
         SelfContainedAgent.__init__(self, args)
         self._max_iterations = 8
         self._enable_interleave_reflection = False
@@ -69,7 +69,19 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
             f"\"]"
         )
 
-        template = Template(REACT_AGENT_PROMPT)
+        # Split the default prompt at "## AVAILABLE TOOLS" to separate role and tools sections
+        default_prompt_parts = REACT_AGENT_PROMPT.split(
+            "## AVAILABLE TOOLS", 1)
+        role_section = default_prompt_parts[0].strip()
+        tools_and_format_section = "## AVAILABLE TOOLS" + \
+            default_prompt_parts[1] if len(default_prompt_parts) > 1 else ""
+
+        # Use custom prompt as role replacement if provided, otherwise use default role section
+        final_role_section = custom_prompt if custom_prompt is not None else role_section
+
+        # Combine role section with tools section
+        full_prompt = final_role_section + "\n\n" + tools_and_format_section
+        template = Template(full_prompt)
 
         self._prompt = template.substitute(
             tools=tools_prompt, tool_format_example=tool_format_example)
@@ -289,6 +301,9 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
 
             Logger().debug(f"Model response: {response_content}")
 
+            # Replace \' with ' to handle escaped single quotes
+            response_content = response_content.replace("\\'", "'")
+
             # Parse the structured response
             structured_response = parse_structured_response(
                 response_content)
@@ -430,9 +445,10 @@ class SingleProcessIntelligentAgent(BaseIntelligentAgent, SingleProcessAgent, AB
     A class representing a single-process intelligent agent that uses a single-process.
     """
 
-    def __init__(self, actions: Dict[str, Action], examples: str, args):
+    def __init__(self, actions: Dict[str, Action], examples: str, args, custom_prompt: Optional[str] = None):
         SingleProcessAgent.__init__(self, args)
-        BaseIntelligentAgent.__init__(self, actions, examples, args)
+        BaseIntelligentAgent.__init__(
+            self, actions, examples, args, custom_prompt)
 
 
 class IntelligentAgent(BaseIntelligentAgent, MultiprocessingSearchAgent, ABC):
@@ -440,9 +456,10 @@ class IntelligentAgent(BaseIntelligentAgent, MultiprocessingSearchAgent, ABC):
     A class representing an intelligent agent that combines multiprocessing capabilities with intelligent reasoning.
     """
 
-    def __init__(self, actions: Dict[str, Action], examples: str, args, cores=16):
+    def __init__(self, actions: Dict[str, Action], examples: str, args, cores=4, custom_prompt: Optional[str] = None):
         MultiprocessingSearchAgent.__init__(self, args, cores)
-        BaseIntelligentAgent.__init__(self, actions, examples, args)
+        BaseIntelligentAgent.__init__(
+            self, actions, examples, args, custom_prompt)
 
 
 class StatefulIntelligentAgent(BaseIntelligentAgent, MultiprocessingStatefulSearchAgent, ABC):
@@ -450,9 +467,10 @@ class StatefulIntelligentAgent(BaseIntelligentAgent, MultiprocessingStatefulSear
     A class representing a stateful intelligent agent that maintains state across multiple reasoning sessions.
     """
 
-    def __init__(self, actions: Dict[str, Action], examples: str, args, cores):
+    def __init__(self, actions: Dict[str, Action], examples: str, args, cores, custom_prompt: Optional[str] = None):
         MultiprocessingStatefulSearchAgent.__init__(self, args, cores)
-        BaseIntelligentAgent.__init__(self, actions, examples, args)
+        BaseIntelligentAgent.__init__(
+            self, actions, examples, args, custom_prompt)
 
 # pylint: disable=duplicate-code
 
@@ -473,13 +491,12 @@ If the answer can be a single word (e.g., Yes, No, a date, or an object), please
 
 You should decompose the question into multiple sub-questions if necessary, and search for relevant documents for each sub-question. \
 
+You can choose one or more tool calls to gather information. Use them wisely based on the intent of the query.
 You can choose the following tools to find relevant documents.
 
 ## AVAILABLE TOOLS
 
 $tools
-
-You can choose one or more tool calls to gather information. Use them wisely based on the intent of the query.
 
 ## RESPONSE FORMAT
 
