@@ -177,8 +177,63 @@ class BaseDAGAgentV2(BaseDag, ABC):
             actions, DAG_EXECUTION_EXAMPLES, args)
 
         self.nodes = {}
+        # Track the node that failed for backtracking
+        self._current_failed_node_id = None
 
         Logger().debug(f"DAG Agent prompt: {BASE_DAG_PROMPT}")
+
+    def _get_backtrack_suggestion(self, failed_node_id: str, exclude_node_ids: List[str] = None) -> Tuple[str, bool]:
+        """
+        Get backtracking suggestion for a failed node, excluding already exhausted candidates.
+
+        Args:
+            failed_node_id (str): The node that failed to be solved
+            exclude_node_ids (List[str]): Node IDs to exclude from candidates (already exhausted)
+
+        Returns:
+            Tuple[str, bool]: (suggestion_message, has_candidates)
+        """
+        exclude_node_ids = exclude_node_ids or []
+
+        # Check for ancestor nodes for potential backtracking
+        backtrack_candidates = self._find_backtrack_candidates(
+            failed_node_id, self.nodes)
+
+        # Filter out excluded candidates
+        available_candidates = [
+            cand for cand in backtrack_candidates if cand not in exclude_node_ids]
+
+        if available_candidates:
+            # Focus on the first (closest) available candidate
+            candidate_id = available_candidates[0]
+            candidate_node = self.nodes.get(candidate_id)
+
+            if candidate_node:
+                # Get sources for this candidate node
+                sources_text = ""
+                if candidate_node.unique_sources:
+                    sources_list = [
+                        f"- {src['content']}" for src in candidate_node.unique_sources]
+                    sources_text = "\n".join(sources_list)
+
+                # Get previously tried alternatives
+                previous_alternatives = candidate_node.alternative_results if candidate_node.alternative_results else []
+                exclude_list = f"[{', '.join([repr(alt) for alt in previous_alternatives])}]"
+
+                suggestion_msg = f"I was unable to solve sub-question for node {failed_node_id}. Consider providing an \
+alternative answer for node {candidate_id} based on the sources provided below. This answer must be different from all \
+previously tried answers in the exclude list. It should be FLEXIBLE in interpretation, and consider plausible assumptions \
+or entities in the sources including typos. Only when all alternatives are definitely exhausted should you return 'N/A'.\n\nSources for \
+node {candidate_id}:\n{sources_text}\n\nPreviously tried alternatives (exclude): {exclude_list}\n\nCall \
+UPDATE_NODE('alternative_answer', '{candidate_id}') to update the DAG state with an alternative answer. \
+Remember to exhaust all possible alternatives before giving up, even if they assume typos, other interpretations, or \
+entities that may not seem related at first glance. If you cannot find any valid alternative answer after careful \
+consideration, attempt to solve a different sub-question or try solving the original sub-question again \
+with a modified query."
+                return suggestion_msg, True
+
+        return f"I was unable to solve sub-question for node {failed_node_id}. Attempt to solve \
+the sub-question again with a different query.", False
 
     def _update_node(self, alternative_answer: str, node_id: str) -> Tuple[List[str], List[str], Dict[str, int]]:
         """
@@ -207,15 +262,27 @@ class BaseDAGAgentV2(BaseDag, ABC):
                 f"Answer '{alternative_answer}' already provided for node {node_id}")
             existing_alternatives = ", ".join(
                 current_node.alternative_results) if current_node.alternative_results else "none"
-            return [f"The answer '{alternative_answer}' has already been provided for node {node_id}. Previously tried alternatives: {existing_alternatives}. Please provide a different alternative answer."], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+            return [
+                f"The answer '{alternative_answer}' has already been provided for node {node_id}. Previously \
+tried alternatives: {existing_alternatives}. Please provide a different alternative answer."
+            ], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
         # Check for invalid or non-specific answers
         invalid_values = {"n/a", "unknown", "unclear",
                           "not found", "not available", "none", "null", ""}
         if alternative_answer.lower().strip() in invalid_values:
             Logger().debug(
-                f"Invalid answer '{alternative_answer}' provided for node {node_id}")
-            return [f"The answer '{alternative_answer}' is not a valid alternative answer. Please provide a meaningful, specific value extracted or inferred from the sources. Do not use generic values like 'unknown', 'N/A', 'unclear', or similar non-specific terms. If you cannot find a valid alternative, attempt to solve a different sub-question or try solving the original sub-question again with a modified query."], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+                f"Invalid answer '{alternative_answer}' provided for node {node_id}, marking as exhausted")
+
+            # Mark this node as exhausted and get another backtrack candidate
+            current_node.alternatives_exhausted = True
+
+            # Use the stored failed node ID to get another backtrack suggestion
+            if self._current_failed_node_id:
+                # Get another backtrack suggestion, excluding the current exhausted node
+                suggestion_msg, _ = self._get_backtrack_suggestion(
+                    self._current_failed_node_id, [node_id])
+                return [suggestion_msg], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
         # Update the node with the new answer
         current_node.result = alternative_answer
@@ -237,6 +304,7 @@ class BaseDAGAgentV2(BaseDag, ABC):
             self.nodes, include_sources_for=self.nodes.keys())
         return [updated_dag_state], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
+    # pylint: disable-next=too-many-locals
     def _answer(self, query: str, node_id: str) -> Tuple[List[str], List[str], Dict[str, int]]:
         """
         Solve a sub-question using the specialized sub-question React Agent.
@@ -249,6 +317,9 @@ class BaseDAGAgentV2(BaseDag, ABC):
             Tuple[List[str], List[str], Dict[str, int]]: Updated DAG state or error message, sources, usage metrics
         """
         Logger().debug(f"Solving sub-question for node {node_id}: {query}")
+
+        # Reset the failed node tracker when starting a new answer attempt
+        self._current_failed_node_id = None
 
         # Get the current node from our DAG state
         current_node = self.nodes.get(node_id)
@@ -265,7 +336,10 @@ class BaseDAGAgentV2(BaseDag, ABC):
 
         if unsolved_dependencies:
             unsolved_str = ", ".join(unsolved_dependencies)
-            return [f"Cannot solve node {node_id} because the following dependent nodes are not solved yet: {unsolved_str}. Please solve these dependencies first."], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+            return [
+                f"Cannot solve node {node_id} because the following dependent nodes are not \
+solved yet: {unsolved_str}. Please solve these dependencies first."
+], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
         # Use the sub-question React Agent to solve the query
         notebook = self._subquestion_agent.reason(query)
@@ -277,42 +351,13 @@ class BaseDAGAgentV2(BaseDag, ABC):
         # Update the node state
         if answer == 'N/A':
             current_node.is_failed = True
+            self._current_failed_node_id = node_id  # Track this as the failed node
             Logger().debug(f"Node {node_id} failed to find an answer")
 
-            # Check for ancestor nodes for potential backtracking
-            backtrack_candidates = self._find_backtrack_candidates(
-                node_id, self.nodes)
-            if backtrack_candidates:
-                # Focus on the first (closest) candidate only
-                candidate_id = backtrack_candidates[0]
-                candidate_node = self.nodes.get(candidate_id)
-
-                if candidate_node:
-                    # Get sources for this candidate node
-                    sources_text = ""
-                    if candidate_node.unique_sources:
-                        sources_list = [
-                            f"- {src['content']}" for src in candidate_node.unique_sources]
-                        sources_text = "\n".join(sources_list)
-
-                    # Get previously tried alternatives
-                    previous_alternatives = candidate_node.alternative_results if candidate_node.alternative_results else []
-                    exclude_list = f"[{', '.join([repr(alt) for alt in previous_alternatives])}]"
-
-                    suggestion_msg = f"I was unable to solve sub-question for node {node_id}. Consider providing an \
-alternative answer for node {candidate_id} based on the sources provided below. This answer must be different from all \
-previously tried answers in the exclude list. It should be FLEXIBLE in interpretation, and consider plausible assumptions \
-or entities in the sources including typos. Only when all alternatives are definitely exhausted should you return 'N/A'.\n\nSources for \
-node {candidate_id}:\n{sources_text}\n\nPreviously tried alternatives (exclude): {exclude_list}\n\nCall \
-UPDATE_NODE('alternative_answer', '{candidate_id}') to update the DAG state with an alternative answer. \
-Remember to exhaust all possible alternatives before giving up, even if they assume typos, other interpretations, or \
-entities that may not seem related at first glance. If you cannot find any valid alternative answer after careful \
-consideration, attempt to solve a different sub-question or try solving the original sub-question again \
-with a modified query."
-                    return [suggestion_msg], [], usage_metrics
-
-            return [f"I was unable to solve sub-question for node {node_id}. Attempt to solve \
-the sub-question again with a different query."], [], usage_metrics
+            # Get backtracking suggestion
+            suggestion_msg, _ = self._get_backtrack_suggestion(
+                node_id)
+            return [suggestion_msg], [], usage_metrics
 
         current_node.result = answer
         current_node.context = notebook.get_context()
@@ -336,6 +381,7 @@ the sub-question again with a different query."], [], usage_metrics
             self.nodes, include_sources_for=self.nodes.keys())
         return [updated_dag_state], [], usage_metrics
 
+    # pylint: disable-next=too-many-locals
     def reason(self, question: str) -> NoteBook:
         """
         Reason over the indexed dataset to answer the question using DAG decomposition v2.

@@ -16,6 +16,7 @@ from models.question_answer import QuestionAnswer
 from utils.model_utils import supports_temperature_param
 from utils.structure_response import parse_structured_response
 
+
 class ReactAgent(BaseIntelligentAgent, ABC):
     """
     A React agent that uses a single processing search agent as a helper to answer questions.
@@ -55,7 +56,7 @@ few-shot examples.
         raise NotImplementedError(
             "Batch reasoning is not implemented for ReactAgent Helper.")
 
-
+# pylint: disable-next=too-many-instance-attributes, too-few-public-methods
 class BaseDAGNode(ABC):
     """
     Base class for DAG nodes that defines the common interface.
@@ -131,7 +132,8 @@ keywords related to the question.",
             )
         }
 
-        self._subquestion_agent = ReactAgent(actions, PROMPT_EXAMPLES_TOOLS, args)
+        self._subquestion_agent = ReactAgent(
+            actions, PROMPT_EXAMPLES_TOOLS, args)
 
     def index(self, _):
         """
@@ -141,7 +143,6 @@ keywords related to the question.",
         # Actual fix should be to re-design how react_agent returns results
         # pylint: disable-next=protected-access
         self._subquestion_agent._corpus = self._corpus
-
 
     def _parse_dag_plan(self, response_content: str, node_class) -> Dict[str, Any]:
         """
@@ -340,8 +341,8 @@ keywords related to the question.",
         return candidates
 
     def _serialize_dag_state(
-        self, 
-        nodes: Dict[str, Any], 
+        self,
+        nodes: Dict[str, Any],
         include_sources_for: List[str] = None,
         exclude_context: bool = False
     ) -> str:
@@ -362,7 +363,7 @@ keywords related to the question.",
         for node_id, node in nodes.items():
             include_sources = node_id in include_sources_for
             dag_state.append(node.to_dict(
-                include_sources=include_sources, 
+                include_sources=include_sources,
                 include_context=not exclude_context
             ))
 
@@ -395,7 +396,7 @@ keywords related to the question.",
     def _get_dependent_nodes(self, failed_node_id: str, nodes: Dict[str, Any]) -> List[str]:
         """
         Get all nodes that directly depend on the given failed node.
-        
+
         Args:
             failed_node_id (str): The ID of the failed node
             nodes (Dict[str, Any]): All nodes in the DAG
