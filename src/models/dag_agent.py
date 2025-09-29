@@ -296,7 +296,7 @@ other interpretations, or entities that may not seem related at first glance."""
 the available information from each node to formulate a CONCISE and COMPLETE answer. Provide an EXACT answer \
 using only words found in the results when possible. DO NOT REPEAT the question in your answer under any circumstances. \
 If the answer can be a single word (e.g., Yes, No, a date, or an object), please provide just that word. If the \
-information seems insufficient, please make plausible assumptions about the available information, assuming typos 
+information seems insufficient, please make plausible assumptions about the available information, assuming typos \
 or flexible interpretations. Only if definitely no answer exists, respond with 'N/A'."""
         }
 
@@ -914,7 +914,7 @@ class DAGAgent(BaseDAGAgent, MultiprocessingSearchAgent, ABC):
     A multiprocessing DAG agent.
     """
 
-    def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=2):
+    def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=24):
         MultiprocessingSearchAgent.__init__(self, args, cores=cores)
         BaseDAGAgent.__init__(self, search_function, args)
 
@@ -927,4 +927,3 @@ class StatefulDAGAgent(BaseDAGAgent, MultiprocessingStatefulSearchAgent, ABC):
     def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores):
         MultiprocessingStatefulSearchAgent.__init__(self, args, cores)
         BaseDAGAgent.__init__(self, search_function, args)
-

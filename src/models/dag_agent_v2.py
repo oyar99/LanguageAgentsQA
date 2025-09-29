@@ -1,6 +1,6 @@
 """
 A DAG-based agent v2 that decomposes questions into directed acyclic graphs and delegates execution to a React Agent.
-This version creates a DAG plan and passes it to a React Agent with a answer tool for autonomous execution.
+This version creates a DAG plan and passes it to a React Agent with an answer tool for autonomous execution.
 """
 
 # pylint: disable=duplicate-code, too-many-lines
@@ -9,6 +9,7 @@ from abc import ABC
 import os
 from typing import Callable, Dict, List, Tuple
 
+from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
 from models.action import Action
 from models.agent import (
@@ -17,10 +18,12 @@ from models.agent import (
     NoteBook,
     SingleProcessAgent
 )
-from models.base_dag import BaseDAGAgent as BaseDag, BaseDAGNode, BASE_DAG_PROMPT
+from models.base_dag import BaseDAGAgent as BaseDag, BaseDAGNode, BASE_DAG_PROMPT, DEFAULT_DAG_JOB_ARGS
 from models.react_agent import BaseIntelligentAgent
 from models.retrieved_result import RetrievedResult
 from models.question_answer import QuestionAnswer
+from utils.model_utils import supports_temperature_param
+from utils.structure_response import parse_structured_response
 
 
 class BaseDAGExecutionReactAgent(BaseIntelligentAgent, ABC):
@@ -136,9 +139,10 @@ class BaseDAGAgentV2(BaseDag, ABC):
     A DAG-based agent v2 that decomposes questions into a directed acyclic graph structure
     and delegates execution to a React Agent with a answer tool.
 
-    The agent operates in two phases:
+    The agent operates in three phases:
     1. Planning Phase: Decompose the main question into a DAG of sub-questions
     2. Execution Phase: Pass the DAG plan to a React Agent that autonomously executes it
+    3. Synthesis Phase: Synthesize the final answer from the completed DAG state
     """
 
     def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args):
@@ -159,15 +163,17 @@ class BaseDAGAgentV2(BaseDag, ABC):
                 "answer the query and must **NOT** contain any node IDs or references to other nodes. "
                 "The query must be self-contained and cannot reference other nodes or dependencies. "
                 "The second argument node_id identifies which node in the DAG plan this sub-question "
-                "corresponds to. Returns the updated DAG state after solving the sub-question, or "
+                "corresponds to. Returns the updated node state after solving the sub-question, or "
                 "provides feedback if the query cannot be answered.",
                 self._answer
             ),
             "update_node": Action(
-                "Update a DAG node with an alternative answer and reset dependent nodes. This tool "
-                "takes an answer and node strings. Use this when you need to provide an "
-                "alternative answer for a node based on backtracking suggestions. Returns the updated "
-                "DAG state after the node update and dependent node reset.",
+                "Update a DAG node with an answer. Prefer to use this method when you can answer "
+                "a sub-question directly without executing the answer tool. "
+                "For example, if an answer can be inferred from the result of other nodes. "
+                "You may also update an already processed node with an alternative answer to explore "
+                "different paths. The first argument is the value to update the node with, "
+                "and the second argument is the node_id to update. Returns the updated node state. ",
                 self._update_node
             )
         }
@@ -182,7 +188,7 @@ class BaseDAGAgentV2(BaseDag, ABC):
 
         Logger().debug(f"DAG Agent prompt: {BASE_DAG_PROMPT}")
 
-    def _get_backtrack_suggestion(self, failed_node_id: str, exclude_node_ids: List[str] = None) -> Tuple[str, bool]:
+    def _get_backtrack_suggestion(self, failed_node_id: str) -> Tuple[str, bool]:
         """
         Get backtracking suggestion for a failed node, excluding already exhausted candidates.
 
@@ -193,19 +199,13 @@ class BaseDAGAgentV2(BaseDag, ABC):
         Returns:
             Tuple[str, bool]: (suggestion_message, has_candidates)
         """
-        exclude_node_ids = exclude_node_ids or []
-
         # Check for ancestor nodes for potential backtracking
         backtrack_candidates = self._find_backtrack_candidates(
             failed_node_id, self.nodes)
 
-        # Filter out excluded candidates
-        available_candidates = [
-            cand for cand in backtrack_candidates if cand not in exclude_node_ids]
-
-        if available_candidates:
+        if backtrack_candidates:
             # Focus on the first (closest) available candidate
-            candidate_id = available_candidates[0]
+            candidate_id = backtrack_candidates[0]
             candidate_node = self.nodes.get(candidate_id)
 
             if candidate_node:
@@ -222,20 +222,19 @@ class BaseDAGAgentV2(BaseDag, ABC):
 
                 suggestion_msg = f"I was unable to solve sub-question for node {failed_node_id}. Consider providing an \
 alternative answer for node {candidate_id} based on the sources provided below. This answer must be different from all \
-previously tried answers in the exclude list. It should be FLEXIBLE in interpretation, and consider plausible assumptions \
+previously attempted answers. It should be FLEXIBLE in interpretation, and consider plausible assumptions \
 or entities in the sources including typos. Only when all alternatives are definitely exhausted should you return 'N/A'.\n\nSources for \
-node {candidate_id}:\n{sources_text}\n\nPreviously tried alternatives (exclude): {exclude_list}\n\nCall \
-UPDATE_NODE('alternative_answer', '{candidate_id}') to update the DAG state with an alternative answer. \
+node {candidate_id}:\n{sources_text}\n\nPreviously attempted answers: {exclude_list}\n\nCall \
+UPDATE_NODE('alternative_answer', '{candidate_id}') to update the node state with an alternative answer. \
+If no alternative answer exists, you may call UPDATE_NODE('N/A', '{candidate_id}') to mark the node as exhausted. \
 Remember to exhaust all possible alternatives before giving up, even if they assume typos, other interpretations, or \
-entities that may not seem related at first glance. If you cannot find any valid alternative answer after careful \
-consideration, attempt to solve a different sub-question or try solving the original sub-question again \
-with a modified query."
+entities that may not seem related at first glance."
                 return suggestion_msg, True
 
         return f"I was unable to solve sub-question for node {failed_node_id}. Attempt to solve \
 the sub-question again with a different query.", False
 
-    def _update_node(self, alternative_answer: str, node_id: str) -> Tuple[List[str], List[str], Dict[str, int]]:
+    def _update_node(self, answer: str, node_id: str) -> Tuple[List[str], List[str], Dict[str, int]]:
         """
         Update a DAG node with an alternative answer and reset dependent nodes.
 
@@ -246,50 +245,59 @@ the sub-question again with a different query.", False
         Returns:
             Tuple[List[str], List[str], Dict[str, int]]: Updated DAG state, empty sources, usage metrics
         """
-        alternative_answer = str(alternative_answer).strip()
+        answer = str(answer).strip()
 
         Logger().debug(
-            f"Updating node {node_id} with alternative answer: {alternative_answer}")
+            f"Updating node {node_id} with answer: {answer}")
 
         current_node = self.nodes.get(node_id)
+
         if not current_node:
             Logger().error(f"Node {node_id} not found in current DAG state")
             return ["Node not found"], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
         # Check if the alternative answer has already been provided
-        if alternative_answer in current_node.alternative_results:
+        if answer in current_node.alternative_results:
             Logger().debug(
-                f"Answer '{alternative_answer}' already provided for node {node_id}")
+                f"Answer '{answer}' already provided for node {node_id}")
             existing_alternatives = ", ".join(
                 current_node.alternative_results) if current_node.alternative_results else "none"
             return [
-                f"The answer '{alternative_answer}' has already been provided for node {node_id}. Previously \
-tried alternatives: {existing_alternatives}. Please provide a different alternative answer."
+                f"The answer '{answer}' has already been provided for node {node_id}. Previously \
+tried alternatives: {existing_alternatives}. Please provide a different alternative answer. \
+If no alternative answer exists, you may call UPDATE_NODE('N/A', '{node_id}') to mark the node as exhausted."
             ], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
-        # Check for invalid or non-specific answers
-        invalid_values = {"n/a", "unknown", "unclear",
-                          "not found", "not available", "none", "null", ""}
-        if alternative_answer.lower().strip() in invalid_values:
+        # Check if no more alternatives are possible
+        if answer.lower().strip() == "n/a":
             Logger().debug(
-                f"Invalid answer '{alternative_answer}' provided for node {node_id}, marking as exhausted")
+                f"Invalid answer '{answer}' provided for node {node_id}, marking as exhausted")
 
             # Mark this node as exhausted and get another backtrack candidate
             current_node.alternatives_exhausted = True
+
+            # Revert to first answer as it is more likely correct
+            if current_node.alternative_results:
+                current_node.result = current_node.alternative_results[0]
+                current_node.context = ""
 
             # Use the stored failed node ID to get another backtrack suggestion
             if self._current_failed_node_id:
                 # Get another backtrack suggestion, excluding the current exhausted node
                 suggestion_msg, _ = self._get_backtrack_suggestion(
-                    self._current_failed_node_id, [node_id])
+                    self._current_failed_node_id)
                 return [suggestion_msg], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
+            return [
+                f"Node {node_id} marked as exhausted. No more alternatives available."
+            ], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+
         # Update the node with the new answer
-        current_node.result = alternative_answer
-        current_node.context = f"Alternative answer provided: {alternative_answer}"
+        current_node.result = answer
+        current_node.context = f"Alternative answer provided: {answer}"
         current_node.is_completed = True
         current_node.is_failed = False
-        current_node.alternative_results.append(alternative_answer)
+        current_node.alternative_results.append(answer)
 
         if len(current_node.alternative_results) >= 4:
             current_node.alternatives_exhausted = True
@@ -299,10 +307,28 @@ tried alternatives: {existing_alternatives}. Please provide a different alternat
         # Reset all dependent nodes
         self._reset_dependent_nodes(node_id, self.nodes)
 
-        # Return updated DAG state
-        updated_dag_state = self._serialize_dag_state(
-            self.nodes, include_sources_for=self.nodes.keys())
-        return [updated_dag_state], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+        # Find immediate dependent nodes that can now be solved
+        immediate_dependents = []
+        for potential_node_id, potential_node in self.nodes.items():
+            if node_id in potential_node.dependencies:
+                # Check if all other dependencies are completed
+                other_deps_completed = all(
+                    self.nodes[dep].is_completed and not self.nodes[dep].is_failed
+                    for dep in potential_node.dependencies if dep != node_id
+                )
+                if other_deps_completed:
+                    immediate_dependents.append(potential_node_id)
+
+        if immediate_dependents:
+            dependents_str = ", ".join(immediate_dependents)
+            guidance_msg = f"Node {node_id} has been successfully updated with answer: '{answer}'. " \
+                f"The following dependent nodes can now be solved: {dependents_str}. " \
+                f"Continue by solving one of these dependent sub-questions."
+        else:
+            guidance_msg = f"Node {node_id} has been successfully updated with answer: '{answer}'. " \
+                f"All dependent nodes are complete or no more nodes can be solved. DAG execution may be finished."
+
+        return [guidance_msg], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
     # pylint: disable-next=too-many-locals
     def _answer(self, query: str, node_id: str) -> Tuple[List[str], List[str], Dict[str, int]]:
@@ -322,14 +348,15 @@ tried alternatives: {existing_alternatives}. Please provide a different alternat
         self._current_failed_node_id = None
 
         # Get the current node from our DAG state
-        current_node = self.nodes.get(node_id)
-        if not current_node:
+        node = self.nodes.get(node_id)
+
+        if not node:
             Logger().error(f"Node {node_id} not found in current DAG state")
             return ["Node not found"], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
         # Check if all dependencies are solved
         unsolved_dependencies = []
-        for dep_id in current_node.dependencies:
+        for dep_id in node.dependencies:
             dep_node = self.nodes.get(dep_id)
             if not dep_node or not dep_node.is_completed:
                 unsolved_dependencies.append(dep_id)
@@ -339,47 +366,120 @@ tried alternatives: {existing_alternatives}. Please provide a different alternat
             return [
                 f"Cannot solve node {node_id} because the following dependent nodes are not \
 solved yet: {unsolved_str}. Please solve these dependencies first."
-], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+            ], [], {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
         # Use the sub-question React Agent to solve the query
         notebook = self._subquestion_agent.reason(query)
 
         answer = notebook.get_notes()
         sources = notebook.get_sources()
+        last_thought = notebook.get_context()
         usage_metrics = notebook.get_usage_metrics()
+
+        # Update sources
+        node.sources.extend(sources)
+
+        # Update unique sources by deduplicating based on doc_id
+        seen_doc_ids = {src['doc_id'] for src in node.unique_sources}
+        for source in sources:
+            if source['doc_id'] not in seen_doc_ids:
+                node.unique_sources.append(source)
+                seen_doc_ids.add(source['doc_id'])
 
         # Update the node state
         if answer == 'N/A':
-            current_node.is_failed = True
-            self._current_failed_node_id = node_id  # Track this as the failed node
             Logger().debug(f"Node {node_id} failed to find an answer")
+            node.is_failed = True
+            self._current_failed_node_id = node_id  # Track this as the failed node
 
             # Get backtracking suggestion
             suggestion_msg, _ = self._get_backtrack_suggestion(
                 node_id)
             return [suggestion_msg], [], usage_metrics
 
-        current_node.result = answer
-        current_node.context = notebook.get_context()
-        current_node.is_completed = True
-        current_node.alternative_results.append(answer)
         Logger().debug(f"Node {node_id} succeeded with answer: {answer}")
+        node.result = answer
+        node.is_completed = True
+        node.context = last_thought
+        node.alternative_results.append(answer)
 
-        # Update sources
-        current_node.sources.extend(sources)
-
-        # Update unique sources by deduplicating based on doc_id
-        seen_doc_ids = {src['doc_id']
-                        for src in current_node.unique_sources}
-        for source in sources:
-            if source['doc_id'] not in seen_doc_ids:
-                current_node.unique_sources.append(source)
-                seen_doc_ids.add(source['doc_id'])
-
-        # Return updated DAG state after successful solve
         updated_dag_state = self._serialize_dag_state(
-            self.nodes, include_sources_for=self.nodes.keys())
+            {node_id: node}, include_sources_for=[node_id])
         return [updated_dag_state], [], usage_metrics
+
+    def _synthesize_final_answer(self, question: str) -> Tuple[str, Dict[str, int]]:
+        """
+        Synthesize the final answer from the completed DAG state using direct LLM call.
+
+        Args:
+            question (str): The original question to answer
+
+        Returns:
+            Tuple[str, Dict[str, int]]: Final answer and usage metrics
+        """
+        # Get failed node IDs to include sources
+        failed_node_ids = [node_id for node_id, node in self.nodes.items()
+                           if node.is_failed and node.unique_sources]
+
+        # Serialize DAG state with sources for failed nodes
+        dag_state = self._serialize_dag_state(
+            self.nodes, include_sources_for=failed_node_ids)
+
+        # Build the system prompt
+        system_prompt = f"{DAG_SYNTHESIS_PROMPT}\n## DAG State\n\n{dag_state}"
+
+        Logger().debug(f"""DAG Synthesis system prompt:
+{system_prompt}""")
+
+        # Create the request with structured JSON response
+        request = {
+            "custom_id": "dag_synthesis_v2",
+            "model": self._think_model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question}
+            ],
+            "temperature": DEFAULT_DAG_JOB_ARGS['temperature']
+            if supports_temperature_param(self._think_model) else None,
+            "frequency_penalty": DEFAULT_DAG_JOB_ARGS['frequency_penalty'],
+            "presence_penalty": DEFAULT_DAG_JOB_ARGS['presence_penalty'],
+            "max_completion_tokens": 300,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "strict": True,
+                    "name": "dag_synthesis_response",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "result": {"type": "string"},
+                            "reason": {"type": "string"}
+                        },
+                        "required": ["result", "reason"],
+                        "additionalProperties": False
+                    }
+                }
+            }
+        }
+
+        result = chat_completions([request])[0][0]
+
+        # Parse the structured response
+        structured_response = parse_structured_response(
+            result.choices[0].message.content.strip())
+
+        final_answer = structured_response['result']
+        reason = structured_response['reason']
+
+        usage_metrics = {
+            "completion_tokens": result.usage.completion_tokens,
+            "prompt_tokens": result.usage.prompt_tokens,
+            "total_tokens": result.usage.total_tokens
+        }
+
+        Logger().debug(
+            f"Synthesized final answer: {final_answer}, reason: {reason}")
+        return final_answer, usage_metrics
 
     # pylint: disable-next=too-many-locals
     def reason(self, question: str) -> NoteBook:
@@ -413,30 +513,28 @@ solved yet: {unsolved_str}. Please solve these dependencies first."
 
         messages.append({"role": "assistant", "content": response_content})
 
-        # Parse the DAG plan using base class method
+        # Parse the DAG plan
         self.nodes = self._parse_dag_plan(response_content, DAGNodeV2)
 
-        # Phase 2: Pass DAG plan to execution React Agent
+        # Phase 2: Execute DAG plan
         dag_state = self._serialize_dag_state(self.nodes)
 
-        # Create execution prompt with DAG plan and original question
-        execution_question = f"""DAG Plan:
-
-{dag_state}
-
-Question: {question}
-"""
-
         # Execute the DAG plan using the execution React Agent
-        execution_notebook = self._execution_agent.reason(execution_question)
+        execution_notebook = self._execution_agent.reason(dag_state)
 
         # Collect usage metrics from execution
         execution_usage = execution_notebook.get_usage_metrics()
         for key in usage_metrics:
             usage_metrics[key] += execution_usage.get(key, 0)
 
-        final_answer = execution_notebook.get_notes()
         execution_messages = execution_notebook.get_messages()
+
+        # Phase 3: Synthesize final answer
+        final_answer, synthesis_usage = self._synthesize_final_answer(question)
+
+        # Update usage metrics
+        for key in usage_metrics:
+            usage_metrics[key] += synthesis_usage.get(key, 0)
 
         Logger().info(
             f"Final DAG v2 answer for question '{question}': {final_answer}")
@@ -502,7 +600,6 @@ class StatefulDAGAgentV2(BaseDAGAgentV2, MultiprocessingStatefulSearchAgent, ABC
 
 DAG_EXECUTION_EXAMPLES = '''### Example
 
-DAG Plan:
 [
     {
         "node_id": "node_1",
@@ -515,8 +612,6 @@ DAG Plan:
         "dependencies": ["node_1"]
     }
 ]
-
-Question: In which county is Kimbrough Memorial Stadium located?
 
 Iteration 1:
 ```json
@@ -532,21 +627,14 @@ Iteration 2:
     "thought": "I have a DAG plan with 2 nodes where node_2 depends on node_1. I should start by solving node_1 first.",
     "actions": ["answer('Kimbrough Memorial Stadium location', 'node_1')"],
     "observations": [["
-    {
-        [
-            "node_id": "node_1",
-            "sub_question": "What is the location of Kimbrough Memorial Stadium?",
-            "dependencies": [],
-            "result": "Canyon, Texas",
-            "context": "Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District.",
-            "sources": ["Doc1", "Doc2"]
-        ],
-        [
-            "node_id": "node_2",
-            "sub_question": "In which county is the stadium from node 1 located?",
-            "dependencies": ["node_1"]
-        ]
-    }
+    [{
+        "node_id": "node_1",
+        "sub_question": "What is the location of Kimbrough Memorial Stadium?",
+        "dependencies": [],
+        "result": "Canyon, Texas",
+        "context": "Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District.",
+        "sources": ["Doc1", "Doc2"]
+    }]
 "]]
 }
 ```
@@ -554,7 +642,8 @@ Iteration 2:
 Iteration 3:
 ```json
 {
-    "thought": "Node_1 is complete and shows the stadium is in Canyon, Texas. Now I need to solve node_2, but I must reformulate the query to replace 'stadium from node 1' with the actual location found.",
+    "thought": "Node_1 is complete and shows the stadium is in Canyon, Texas. Now I need to solve node_2, but I must reformulate the query to replace 'stadium \
+from node 1' with the actual location found.",
     "actions": ["answer('Canyon Texas' location', 'node_2')"]
 }
 ```
@@ -562,27 +651,18 @@ Iteration 3:
 Iteration 4:
 ```json
 {
-    "thought": "Node_1 is complete and shows the stadium is in Canyon, Texas. Now I need to solve node_2, but I must reformulate the query to replace 'stadium from node 1' with the actual location found.",
+    "thought": "Node_1 is complete and shows the stadium is in Canyon, Texas. Now I need to solve node_2, but I must reformulate the query to replace 'stadium \
+from node 1' with the actual location found.",
     "actions": ["answer('Canyon Texas' location', 'node_2')"],
     "observations": [["
-    {
-        [
-            "node_id": "node_1",
-            "sub_question": "What is the location of Kimbrough Memorial Stadium?",
-            "dependencies": [],
-            "result": "Canyon, Texas",
-            "context": "Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District.",
-            "sources": ["Doc1", "Doc2"]
-        ],
-        [
-            "node_id": "node_2",
-            "sub_question": "In which county is the stadium from node 1 located?",
-            "dependencies": ["node_1"],
-            "result": "Randall County",
-            "context": "Canyon is a city in, and the county seat of, Randall County, Texas, United States.",
-            "sources": ["Doc3", "Doc4"]
-        ]
-    }
+    [{
+        "node_id": "node_2",
+        "sub_question": "In which county is the stadium from node 1 located?",
+        "dependencies": ["node_1"],
+        "result": "Randall County",
+        "context": "Canyon is a city in, and the county seat of, Randall County, Texas, United States.",
+        "sources": ["Doc3", "Doc4"]
+    }]
 "]]
 }
 ```
@@ -590,26 +670,68 @@ Iteration 4:
 Iteration 5:
 ```json
 {
-    "thought": "Both nodes are now complete. Node_1 found that Kimbrough Memorial Stadium is in Canyon, Texas, and node_2 found that Canyon is in Randall County. I can now answer the original question.",
-    "final_answer": "Randall County"
+    "thought": "All nodes are now complete.",
+    "final_answer": "EXECUTION_COMPLETE"
 }
 ```
 
-**IMPORTANT**: Your responses MUST NEVER contain any observations under absolutely no circumstances. Observations are returned to you after each action
+**IMPORTANT**: Your responses MUST NEVER contain any observations under absolutely no circumstances. Observations are returned to you after each action \
 and are not part of your response. You must only respond with the JSON structure containing your thoughts and actions, or the final answer when ready.
 '''
 
-DAG_EXECUTION_REACT_PROMPT = '''You are an intelligent agent that solves complex questions by \
-executing DAG (Directed Acyclic Graph) plans. You can use tools to solve sub-questions and update \
-the state of the DAG dynamically. Once you believe the current DAG state is sufficient to answer the \
-original question, you must provide an EXACT answer, using only words found in the the documents when \
-possible. You should not include any additional commentary, explanations, or notes in your \
-final response. If the answer can be a single word (e.g., Yes, No, a date, or an object), please provide \
-just that word.
+DAG_EXECUTION_REACT_PROMPT = '''You are an intelligent agent that executes DAG (Directed Acyclic Graph) plans. \
+Your only responsibility is to systematically solve each sub-question in the DAG by using the available tools. \
+You should work through the DAG nodes in dependency order, solving independent nodes first, then nodes that depend on them.
 
-You may only execute one action per iteration. After each action, you will receive the updated DAG state \
-or feedback on your action. Use this information to inform your next steps.
+When all nodes that can be completed are finished, you should provide "EXECUTION_COMPLETE" as your final answer \
+to indicate that DAG execution is finished.
+
+After each action, you will receive the updated node state or feedback on your action. Use this information to inform your next steps.
 
 You can choose the following tools to execute the DAG plan.
 
+'''
+
+DAG_SYNTHESIS_PROMPT = '''Answer the given question based on the available information from each node to formulate a \
+CONCISE and COMPLETE answer. Provide an EXACT answer using only words found in the results when possible. DO NOT REPEAT the \
+question in your answer under any circumstances. If the answer can be a single word (e.g., Yes, No, a date, or an object), \
+please provide just that word. If the information seems insufficient, please make plausible assumptions about the available information, \
+assuming typos or flexible interpretations. Only if definitely no answer exists, respond with 'N/A'.
+
+### Example
+
+## DAG State
+
+[
+  {
+    "node_id": "node_1",
+    "sub_question": "What is Chris Menges' occupation?",
+    "dependencies": [],
+    "result": "cinematographer and director",
+    "context": "I found that Chris Menges is an English cinematographer and film director."
+  },
+  {
+    "node_id": "node_2",
+    "sub_question": "What is Aram Avakian's occupation?",
+    "dependencies": [],
+    "result": "film editor and director",
+    "context": "I found that Aram Avakian was an Armenian-American film editor and director."
+  },
+  {
+    "node_id": "node_3",
+    "sub_question": "Do Chris Menges and Aram Avakian have the same occupation?",
+    "dependencies": [
+      "node_1",
+      "node_2"
+    ],
+    "result": "Chris Menges is a cinematographer and film director, while Aram Avakian is a film editor and director, so they do not have the same occupation."
+  }
+]
+
+Output:
+{
+    "thought": "Aram Avakian was an Armenian-American film editor and director. Chris Menges is an English cinematographer and film director. \
+While they have different primary occupations, they both share the occupation of being a director.",
+    "answer": "director"
+}
 '''
