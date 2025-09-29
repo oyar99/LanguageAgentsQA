@@ -456,7 +456,15 @@ class IntelligentAgent(BaseIntelligentAgent, MultiprocessingSearchAgent, ABC):
     A class representing an intelligent agent that combines multiprocessing capabilities with intelligent reasoning.
     """
 
-    def __init__(self, actions: Dict[str, Action], examples: str, args, cores=4, custom_prompt: Optional[str] = None):
+    # pylint: disable-next=too-many-arguments, too-many-positional-arguments
+    def __init__(
+        self,
+        actions: Dict[str, Action],
+        examples: str,
+        args,
+        cores=3,
+        custom_prompt: Optional[str] = None
+    ):
         MultiprocessingSearchAgent.__init__(self, args, cores)
         BaseIntelligentAgent.__init__(
             self, actions, examples, args, custom_prompt)
