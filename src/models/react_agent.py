@@ -475,6 +475,7 @@ class StatefulIntelligentAgent(BaseIntelligentAgent, MultiprocessingStatefulSear
     A class representing a stateful intelligent agent that maintains state across multiple reasoning sessions.
     """
 
+    # pylint: disable-next=too-many-arguments, too-many-positional-arguments
     def __init__(self, actions: Dict[str, Action], examples: str, args, cores, custom_prompt: Optional[str] = None):
         MultiprocessingStatefulSearchAgent.__init__(self, args, cores)
         BaseIntelligentAgent.__init__(
