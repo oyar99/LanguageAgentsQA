@@ -104,9 +104,9 @@ Building on the evaluation framework, we design several language agent architect
 
 \subsubsection{QA Agent with Self-Reflection}
 
-\noindent This variant incorporates a reflection mechanism that enables the agent to recognize when it is not making meaningful progress toward an answer. The agent records its ongoing reasoning steps in a separate episodic memory. After each reasoning iteration, it evaluates whether its recent thoughts have led to useful progress. If not, the agent pauses to analyze the retrieved observations to make inferences and formulate a new plan of action. Although simple, this mechanism helps redirect the agent's trajectory and maintain focus on the question.
+\noindent This variant incorporates a reflection mechanism that enables the agent to recognize when it is not making meaningful progress toward an answer. The agent records its ongoing reasoning steps in a separate episodic memory. After each reasoning iteration, it evaluates whether the last $m$ thoughts have led to useful progress. If not, the agent pauses to analyze the retrieved observations to make inferences and formulate a new plan of action. Although simple, this mechanism helps redirect the agent's trajectory and maintain focus on the question.
 
-\subsection{QA DAG Agent}
+\subsection{DAG Agent}
 
 \noindent We take inspiration on frameworks such as \textit{PAR RAG} \cite{zhang2025credibleplandrivenragmethod} and \textit{Plan-and-Solve} \cite{wang-etal-2023-plan} to design an agent that begins by constructing a plan in the form of a Directed Acyclic Graph (DAG). This is achieved by explicitly prompting a language model $M$ to build a graph $G$ that identifies sub-questions and clearly defines the order in which they must be answered.
 
@@ -122,9 +122,9 @@ Building on the evaluation framework, we design several language agent architect
 
 \noindent The DAG itself serves as the agent's episodic memory, storing sub-questions, reasoning traces, answers, and retrieved documents. Unlike frameworks such as ReAct, which make it difficult to detect reasoning or retrieval errors during execution, our approach leverages a programmatically assisted procedure that deterministically identifies and recovers from such errors. 
 
-\noindent Our backtracking mechanism can be interpreted as a form of reflection where the agent revisits only ancestor nodes and evaluates plausible alternatives within a bounded search space, enabling the agent to correct earlier missteps in a controlled manner.
+\noindent Our backtracking mechanism can be interpreted as a form of reflection, where the agent revisits ancestor nodes and evaluates plausible alternatives within a bounded search space, enabling the agent to correct earlier missteps in a controlled manner.
 
-\noindent For example, our approach is able to correctly identify expected answers for questions that involve conflicting information. Consider the MuSiQue question \textit{Who is the spouse of the Green performer?}, for which the model generates the plan illustrated in Figure \ref{fig:dag_example}.
+\noindent For example, our approach correctly identifies expected answers in cases involving conflicting information. Consider the MuSiQue question \textit{Who is the spouse of the Green performer?}, for which the model generates the plan illustrated in Figure \ref{fig:dag_example}.
 
 \begin{figure}[h]
     \centering
@@ -140,9 +140,30 @@ Building on the evaluation framework, we design several language agent architect
     - \textit{Green (Steve Hillage album)}: Green is the fourth studio album by British progressive rock musician Steve Hillage.
 \end{quote}
 
-\noindent Initially, the agent selects the first document and answers \textit{Chuck Green}. However, when addressing $node_2$, it fails to find information about Chuck Green's spouse, since that information is not available in the corpus. At this point, the agent backtracks, recognizes that an alternative answer (\textit{Steve Hillage, performer of the album Green}) was plausible, and resumes execution. This correction ultimately leads the agent to the expected answer \textit{MiQuette Giraudy}.
+\noindent Initially, the agent selects the first document and answers \textit{Chuck Green}. However, when addressing $node_2$, it fails to find information about Chuck Green's spouse, since that information is not available in the corpus. At this point, the agent backtracks, recognizes that an alternative answer (\textit{Steve Hillage, performer of the album Green}) is plausible, and resumes execution. This correction ultimately leads the agent to the expected answer \textit{MiQuette Giraudy}.
 
-\noindent In our experiments we use GPT-4o-mini and GPT-4.1-mini as the language model $M$. The function $A(q)$ is implemented using the QA Agent introduced in Section \ref{sec:qa_agent}, with ColBERTv2 as the retriever. This architecture furthers allows decoupling reasoning and execution, where larger models can be used for generating the DAG or synthesizing answers, while smaller models handle sub-question solving, a flexibility not easily achieved with ReAct-style agents.
+\noindent Similarly, our approach is effective when prior knowledge biases the agent toward an incorrect path. Consider the HotpotQA question \textit{In what year was the writer of The Bet born?}. The retriever obtains the following document.
+
+\begin{quote}
+    The Bet is a 1992 American short film directed by Ted Demme, written by Gavin O'Connor, and starring Josh Mosby and John B. Hickey.
+\end{quote}
+
+\noindent Here, the agent may incorrectly assume that the question refers to \textit{Anton Checkhov's} 1889 short story \textit{The Bet}, since this story is more widely known and likely appears more frequently in the training data. This initial bias can prevent consideration of alternative interpretations. Our backtracking procedure enables the agent to revisit this assumption, recognize that the necessary information about Chekhov is absent, and instead recover the intended answer by shifting to the 1992 film context.
+
+\noindent In our experiments we use GPT-4o-mini and GPT-4.1-mini as the language model $M$. The function $A(q)$ is implemented using the QA Agent introduced in Section \ref{sec:qa_agent}, with ColBERTv2 as the retriever and GPT-4o-mini as the language model. This architecture furthers allows decoupling reasoning and execution, where larger models can be used for generating the DAG or synthesizing answers, while smaller models handle sub-question solving, a flexibility not easily achieved with ReAct-style agents.
+
+\subsubsection{Autonomous DAG Agent}
+
+We also explore an alternative implementation of the execution loop in Algorithm \ref{alg:qa-dag}, where the entire process is delegated to a ReAct-style agent. Instead of a programatically orchestrated loop, the agent autonomously controls execution through two tools.
+
+\begin{itemize}
+    \item[] $answer(query: str, node\_id: str)$: calls the function $A(q)$ to obtain an answer for a sub-question. It returns the updated node state, including the answer and supporting documents. If $A(q)$ fails to produce an answer, the tool returns verbatim feedback prompting the agent to generate alternative answers for an ancestor node.
+    \item[] $update\_node(value: str, node\_id: str)$: updates the answer of the specified node, resetting all descendant nodes if they were previously completed. This tool also returns feedback recommending the next steps.
+\end{itemize}
+
+\noindent With these tools, the agent learns to both advance through the DAG and backtrack when necessary. This allows it to reflect on prior decisions, recover from failures, and maintain coherence through verbal reinforcement learning.
+
+\noindent Note that in later sections, we refer to this variant as the \textit{Auto DAG Agent}.
 
 \subsection{Cognitive Agent}
 

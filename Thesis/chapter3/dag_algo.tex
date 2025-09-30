@@ -1,5 +1,5 @@
 \begin{algorithm}[H]
-\caption{QA DAG Agent Reasoning Procedure}
+\caption{QA DAG Agent}
 \label{alg:qa-dag}
 \KwIn{Question $q$}
 \KwOut{Final answer $a$ and documents $\Sigma(v)$}
@@ -29,10 +29,11 @@ $U \gets \{ v \in V \mid v \text{ has no incoming edges} \}$\;
             $(\text{ans}(u),\; \tau(u),\; \Sigma(u)) \gets A(u)$\;
         }
 
-        $\text{original\_ans}(c) \gets \text{ans}(c)$\;
+        \uIf{$\text{original\_ans}(u) = \emptyset$}{
+            $\text{original\_ans}(u) \gets \text{ans}(u)$\;
+        }
         
-        \uIf{$\text{ans}(u) = \emptyset$}{  % node failed
-            % --- build ordered ancestor candidates (closest ancestors first)
+        \uIf{$\text{ans}(u) = \emptyset$}{
             $\text{Candidates} \gets \mathrm{sort}_{\uparrow\!\mathrm{dist}}\big(\text{Ancestors}(u)\big)$\;
             \ForEach{$c \in \text{Candidates}$}{
                 \If{$\neg\text{exhausted}(c)$}{
@@ -43,7 +44,7 @@ $U \gets \{ v \in V \mid v \text{ has no incoming edges} \}$\;
                             $\text{ans}(v) \gets \emptyset,\; \tau(v) \gets \emptyset,\;$
                         }
                         $\text{restart} \gets \text{true}$\;
-                        \textbf{break} % break Candidates loop
+                        \textbf{break}
                     }
                     \uElse{
                         $exhausted(c) \gets \text{true}$\;
@@ -51,11 +52,10 @@ $\text{ans}(c) \gets \text{original\_ans}(c)$
                     }
                 }
             }
-            \If{$\text{restart}$}{ \textbf{break} } % break U loop to restart execution
+            \If{$\text{restart}$}{ \textbf{break} }
         }
-    } % end for each u in U
+    }
 
-    % recompute executable set and advance iteration
     $U \gets \{ v \in V \mid \text{ans}(v) = \emptyset \ \text{and } \forall (u,v)\in E,\; \text{ans}(u) \neq \emptyset \}$\;
     $t \gets t + 1$\;
 }

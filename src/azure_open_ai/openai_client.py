@@ -46,7 +46,7 @@ class OpenAIClient(metaclass=Singleton):
                     azure_endpoint=azure_endpoint,
                     api_key=api_key,
                     api_version=api_version,
-                    max_retries=10
+                    max_retries=18
                 )
 
     def get_client(self):

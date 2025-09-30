@@ -20,7 +20,7 @@ We first evaluated the retrieval performance of our baseline systems introduced 
 
 \noindent We evaluated the retrieval performance of the language agent architectures introduced in Section \ref{agents_sec}. Unlike static retrieval baselines, these agents typically execute multiple searches while reasoning about a question, rather than issuing a single query. Consequently, the retrieved results form an unranked set of documents, and we evaluate performance using macro recall (R), macro precision (P), and macro $F_1$. 
 
-\noindent We start with experimenting with the strongest retrievers, ColBERTv2 and HippoRAG, for the QA Agent. We found that the agent achieved similar performance retrieval with both. Results are shown in Table \ref{tab:retrieval_results_qa_agent}.
+\noindent We start with experimenting with the strongest retrievers, ColBERTv2 and HippoRAG, for the QA Agent. We found that the agent achieved similar retrieval performance with both. Results are shown in Table \ref{tab:retrieval_results_qa_agent}.
 
 \input{chapter4/retrieval_results_qa_agent}
 
@@ -71,7 +71,7 @@ We first evaluated the retrieval performance of our baseline systems introduced 
 
 \subsection{Cognitive Language Agents}
 
-\noindent Table \ref{tab:qa_results_agent} reports the QA performance of the agent architectures. Even the simplest variant, the QA Agent, significantly outperforms the baseline methods on HotpotQA, 2Wiki, and MuSiQue. On 2Wiki, the QA agent even surpasses the the reference setting, where only supporting passages were provided to the LLM (GPT-4o-mini), by $7.4$ points on $R_1$. On HotpotQA and MuSiQue, the agent lags behind the same reference by only $7.0$ and $9.9$ points, respectively. These results underscore the importance of integrating reasoning components into QA systems, particularly given the recall levels of $85.8$ (HotpotQA) and $69.0$ (MuSiQue) that demonstrate that there is still room for better retrieval systems.
+\noindent Table \ref{tab:qa_results_agent} reports the QA performance of the agent architectures. Even the simplest variant, the QA Agent, significantly outperforms the baseline methods on HotpotQA, 2Wiki, and MuSiQue. On 2Wiki, the QA agent even surpasses the reference setting, where only supporting passages were provided to the LLM (GPT-4o-mini), by $7.4$ points on $R_1$. On HotpotQA and MuSiQue, the agent lags behind the same reference by only $7.0$ and $9.9$ points, respectively. These results underscore the importance of integrating reasoning components into QA systems, particularly given the recall levels of $85.8$ (HotpotQA) and $69.0$ (MuSiQue) that demonstrate that there is still room for better retrieval systems.
 
 \input{chapter4/qa_results_agents}
 
