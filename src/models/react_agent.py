@@ -181,7 +181,7 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
             # Perform action
             return action_func, *action_input
 
-        Logger().error(f"Invalid action format: {action}")
+        Logger().warn(f"Invalid action format: {action}")
         raise ValueError(f"Invalid action format: {action}")
 
     def _reflect(
@@ -247,7 +247,6 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
         Logger().debug(
             f"Starting reasoning for question: {question}, process ID: {os.getpid()}")
 
-        stm = []
         sources: Dict[str, List[int]] = {}
         prev_iteration_feedback = False
 
@@ -344,11 +343,9 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
 
                 # If we have reflection feedback, self-reflect and potentially adjust the approach
                 if reflect_feedback:
-                    # Save the current turn to STM first
                     filtered_turn = self._filtered_turn(turn)
                     messages.append(
                         {"role": "system", "content": json.dumps(filtered_turn)})
-                    stm.append(json.dumps(filtered_turn))
 
                     # Add reflection feedback to the conversation
                     messages.append(
@@ -362,9 +359,23 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
             # Mark that the current iteration did not have feedback
             prev_iteration_feedback = False
 
+            processed_actions_success = True
+
             for action_index, action in enumerate(actions, 1):
                 # Parse action string to extract function name and arguments
-                action_func, *action_args = self._parse_action(action)
+                try:
+                    action_func, *action_args = self._parse_action(action)
+                except ValueError as ve:
+                    # reset observations even if only one action failed
+                    turn['observations'] = []
+                    filtered_turn = self._filtered_turn(turn)
+                    messages.append(
+                        {"role": "system", "content": json.dumps(filtered_turn)})
+                    messages.append(
+                        {"role": "system", "content": f"Error parsing action '{action}': {str(ve)}"})
+                    iteration += 1
+                    processed_actions_success = False
+                    break
 
                 sig = signature(action_func)
                 has_context = sig.parameters.get('context', None)
@@ -394,11 +405,11 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
                     folder_id = f"iter_{iteration}_action_{action_index}"
                     sources[folder_id] = list(action_sources)
 
-            filtered_turn = self._filtered_turn(turn)
-            messages.append(
-                {"role": "system", "content": json.dumps(filtered_turn)})
-            stm.append(json.dumps(filtered_turn))
-            iteration += 1
+            if processed_actions_success:
+                filtered_turn = self._filtered_turn(turn)
+                messages.append(
+                    {"role": "system", "content": json.dumps(filtered_turn)})
+                iteration += 1
 
         # Update usage metrics with reflection metrics
         usage_metrics["completion_tokens"] += reflector.usage_metrics.get(
