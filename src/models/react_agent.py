@@ -265,7 +265,7 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
             {"role": "user", "content": question}
         ]
 
-        reflector = Reflector(question=question)
+        reflector = Reflector(question=question, args=self._args)
 
         while final_answer is None:
             Logger().debug(
@@ -473,7 +473,7 @@ class IntelligentAgent(BaseIntelligentAgent, MultiprocessingSearchAgent, ABC):
         actions: Dict[str, Action],
         examples: str,
         args,
-        cores=3,
+        cores=16,
         custom_prompt: Optional[str] = None
     ):
         MultiprocessingSearchAgent.__init__(self, args, cores)

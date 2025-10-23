@@ -2,9 +2,7 @@
 This module provides a Reflector class that detects when an agent is stuck in its reasoning
 process and provides guidance for moving forward.
 """
-# pylint: disable=duplicate-code
 from typing import Dict, List
-
 from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
 from utils.structure_response import parse_structured_response
@@ -16,7 +14,7 @@ class Reflector:
     providing guidance for next steps when no progress is being made.
     """
 
-    def __init__(self, question: str):
+    def __init__(self, question: str, args):
         """
         Initialize the Reflector with a question and set up tracking for thoughts.
 
@@ -31,6 +29,7 @@ class Reflector:
             "total_tokens": 0
         }
         self.stuck_threshold: int = 2  # Number of similar thoughts before considering stuck
+        self.args = args
 
     def reflect_on_step(self, reasoning_step: Dict[str, str]) -> bool:
         """
@@ -111,7 +110,7 @@ Recent thoughts:
 
         open_ai_request = {
             "custom_id": "stuck_detection",
-            "model": 'gpt-2',
+            "model": self.args.model,
             "messages": messages,
             "temperature": default_job_args['temperature'],
             "frequency_penalty": default_job_args['frequency_penalty'],
