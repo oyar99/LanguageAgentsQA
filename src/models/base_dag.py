@@ -58,8 +58,6 @@ few-shot examples.
             "Batch reasoning is not implemented for ReactAgent Helper.")
 
 # pylint: disable-next=too-many-instance-attributes, too-few-public-methods
-
-
 class BaseDAGNode(ABC):
     """
     Base class for DAG nodes that defines the common interface.
