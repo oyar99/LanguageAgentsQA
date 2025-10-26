@@ -18,7 +18,7 @@ from models.agent import (
     NoteBook,
     SingleProcessAgent
 )
-from models.base_dag import BaseDAGAgent as BaseDag, BaseDAGNode, BASE_DAG_PROMPT, DEFAULT_DAG_JOB_ARGS
+from models.base_dag import BaseDAGAgent as BaseDag, BaseDAGNode, DEFAULT_DAG_JOB_ARGS
 from models.react_agent import BaseIntelligentAgent
 from models.retrieved_result import RetrievedResult
 from models.question_answer import QuestionAnswer
@@ -185,8 +185,6 @@ class BaseDAGAgentV2(BaseDag, ABC):
         self.nodes = {}
         # Track the node that failed for backtracking
         self._current_failed_node_id = None
-
-        Logger().debug(f"DAG Agent prompt: {BASE_DAG_PROMPT}")
 
     def _get_backtrack_suggestion(self, failed_node_id: str) -> Tuple[str, bool]:
         """
@@ -504,8 +502,7 @@ solved yet: {unsolved_str}. Please solve these dependencies first."
         messages = []
 
         # Phase 1: Generate DAG plan
-        response_content, planning_usage = self._create_dag_plan(
-            question, BASE_DAG_PROMPT, "dag_planning_v2")
+        response_content, planning_usage = self._create_dag_plan(question)
 
         # Update usage metrics
         for key in usage_metrics:
@@ -584,7 +581,7 @@ class DAGAgentV2(BaseDAGAgentV2, MultiprocessingSearchAgent, ABC):
         search_function: Callable[[str],
                                   Tuple[List[str], List[str], Dict[str, int]]],
         args,
-        cores: int = 24
+        cores: int = 4
     ):
         MultiprocessingSearchAgent.__init__(self, args, cores=cores)
         BaseDAGAgentV2.__init__(self, search_function, args)
@@ -689,7 +686,6 @@ to indicate that DAG execution is finished.
 After each action, you will receive the updated node state or feedback on your action. Use this information to inform your next steps.
 
 You can choose the following tools to execute the DAG plan.
-
 '''
 
 DAG_SYNTHESIS_PROMPT = '''Answer the given question based on the available information from each node to formulate a \

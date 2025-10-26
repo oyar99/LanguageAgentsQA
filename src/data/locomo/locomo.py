@@ -63,7 +63,10 @@ class Locomo(Dataset):
         # Override the default prompts
         self._prompt_dict = {
             'qa_rel': QA_PROMPT_RELEVANT,
-            'qa_all': QA_PROMPT_ALL
+            'qa_all': QA_PROMPT_ALL,
+            'dag_footer': DAG_DECOMPOSITION_FOOTER,
+            'react_footer': REACT_FOOTER,
+            'react_footer_2': REACT_FOOTER
         }
         Logger().info("Initialized an instance of the Locomo dataset")
 
@@ -143,7 +146,6 @@ class Locomo(Dataset):
             corpus = json.load(locomo_corpus)
 
             pattern = re.compile(r"^session_\d+$")
-            conversation_id = self._args.conversation
 
             corpus = [
                 Document(
@@ -157,8 +159,7 @@ class Locomo(Dataset):
                         alt_text=message.get('blip_caption'),
                     ),
                 )
-                for conversation_sample in corpus # corpus[:self._args.limit]
-                if conversation_id is None or conversation_sample['sample_id'] == conversation_id
+                for conversation_sample in corpus
                 for key, session in conversation_sample['conversation'].items() if pattern.match(key)
                 for message in session
             ]
@@ -265,4 +266,140 @@ Below are the conversations in the dataset. (The conversations may be truncated 
 details are guaranteed to be included.)
 
 {context}
+'''
+
+REACT_FOOTER = '''## EXAMPLES
+
+### Example 1
+
+Question: "When did Jolene`s mother pass away?"
+
+Iteration 1:
+```json
+{
+    "thought": "I need to find information about Jolene's mother.",
+    "actions": ["search('Jolenes's mother')"]
+}
+```
+
+Iteration 2:
+```json
+{
+    "thought": "I need to find information about Jolene's mother.",
+    "actions": ["search('Jolenes's mother')"],
+    "observations": [[""At around 4:06 pm on 23 January, 2023, during message 6, Jolene said: Sorry about your loss. My mother also passed away \
+last year. This is my room in her house, I also have many memories there. Is there anything special about it you remember? - Attached image: a \
+photo of a room with a bench and a window"]]
+}
+```
+
+Iteration 3:
+```json
+{
+    "thought": "Jolene mentioned on 23 January, 2023 that her mother passed away last year. She didn't mention a specific date. Therefore, we can
+only infer she died in the year 2022.",
+    "final_answer": "2022"
+}
+```
+
+### Example 2
+
+Question: "How many weeks passed between Maria adopting Coco and Shadow?"
+
+Iteration 1:
+```json
+{
+    "thought": "I need to find out when Maria adopted Coco and when she adopted Shadow.",
+    "actions": ["search('Maria adopted Coco')", "search('Maria adopted Shadow')"]
+}
+```
+
+Iteration 2:
+```json
+{
+    "thought": "I need to find out when Maria adopted Coco and when she adopted Shadow.",
+    "actions": ["search('Maria adopted Coco')", "search('Maria adopted Shadow')"],
+    "observations": [["At around 12:10 am on 11 August, 2023, during message 1, Maria said: Hey John! Long time no talk! \
+Guess what - I got a puppy two weeks ago! Her name's Coco and she's adorable. - Attached image: a photo of a white dog laying in the grass with a baseball"], ["At \
+around 3:14 pm on 13 August, 2023, during message 4, Maria said: Her name is Shadow! She's full of energy and always puts a smile on my face. She's \
+been a great addition to my life. They get along great."]]
+}
+```
+
+Iteration 3:
+```json
+{
+    "thought": "Maria mentioned she got Coco two weeks ago from 11 August, 2023. She did not specify when she adopted Shadow, \
+so I need to find out if she shared more information about adopting a dog.",
+    "actions": ["search('Maria adopted a dog')"]
+}
+```
+
+Iteration 4:
+```json
+{
+    "thought": "Maria mentioned she got Coco two weeks ago from 11 August, 2023. She did not specify when she adopted Shadow, \
+so I need to find out if she shared more information about adopting a dog.",
+    "actions": ["search('Maria adopted a dog')"],
+    "observations": [["At around 12:10 am on 11 August, 2023, during message 1, Maria said: Hey John! Long time no talk! \
+Guess what - I got a puppy two weeks ago! Her name's Coco and she's adorable. - Attached image: a photo of a white dog laying in the grass with a baseball", "At around \
+3:14 pm on 13 August, 2023, during message 2, Maria said: Wow, John! You're doing great things. Kudos for helping kids learn. On another note, I just adopted \
+this cute pup from a shelter last week. She brings so much joy! I feel blessed to be able to give her a home."]]
+}
+```
+
+Iteration 5:
+```json
+{
+    "thought": "Maria mentioned she adopted a dog from a shelter last week from 13 August, 2023. She got Coco two weeks ago from 11 August, 2023. \
+This means there is more than one week between adopting Coco and Shadow.",
+    "final_answer": "More than one week"
+}
+```
+'''
+
+DAG_DECOMPOSITION_FOOTER = '''The questions are based on a dataset of conversations between two users. \
+Each conversation consists of multiple messages exchanged over several days. Each message includes a timestamp indicating when it was sent.
+Most questions can be answered directly from a single message, while others may require synthesizing information from multiple messages.
+
+## EXAMPLES
+
+Question: "When did Caroline go to the adoption meeting?"
+
+Response:
+{
+    "reasoning": "To find out when Caroline went to the adoption meeting, I need to determine the date of the meeting.",
+    "dag_plan": [
+        {
+            "node_id": "node_1",
+            "sub_question": "When did Caroline go to the adoption meeting?",
+            "dependencies": []
+        }
+    ]
+}
+
+Question: "How many weeks passed between Maria adopting Coco and Shadow?"
+
+Response:
+{
+    "reasoning": "I need to first find when Maria adopted Coco and then when she adopted Shadow. After that, I can calculate the number of weeks between \
+those two dates.",
+    "dag_plan": [
+        {
+            "node_id": "node_1",
+            "sub_question": "What is the date Maria adopted Coco?",
+            "dependencies": []
+        },
+        {
+            "node_id": "node_2",
+            "sub_question": "What is the date Maria adopted Shadow?",
+            "dependencies": []
+        },
+        {
+            "node_id": "node_3",
+            "sub_question": "How many weeks passed between the adoption of Coco and Shadow?",
+            "dependencies": ["node_1", "node_2"]
+        }
+    ]
+}
 '''

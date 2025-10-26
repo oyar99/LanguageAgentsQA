@@ -63,6 +63,9 @@ class Dataset(ABC):
             'qa_rel': (QA_PROMPT_RELEVANT if (args.model is not None) and
                        args.model in ('o3-mini', 'gpt-4o-mini', 'gpt-4o-mini-batch') else QA_PROMPT_RELEVANT_EXPLICIT),
             'qa_all': QA_PROMPT_ALL,
+            'react_footer': REACT_FOOTER,
+            'react_footer_2': REACT_FOOTER_2,
+            'dag_footer': DAG_FOOTER
         }
 
         self.name = name
@@ -299,4 +302,171 @@ order and question ids.
 Below are the passages in the dataset. (The passages may be truncated due to length constraints)
 
 {context}
+'''
+
+REACT_FOOTER = '''### EXAMPLES
+
+Question: Which United States Vice President was in office during the time Alfred Balk served as secretary of the Committee?
+
+Iteration 1:
+```json
+{
+    "thought": "I need to find information about United States Vice Presidents and information about Alfred Balk during the time \
+he served as secretary.",
+    "actions": ["search('United States Vice Presidents')", "search('Alfred Balk's biography')"]
+}
+```
+
+Iteration 2:
+```json
+{
+    "thought": "I need to find information about United States Vice Presidents and information about Alfred Balk during the time \
+he served as secretary.",
+    "actions": ["search('United States Vice Presidents')", "search('Alfred Balk's biography')"]
+    "observations": [["Nelson Aldrich Rockefeller was an American businessman and politician who served as the 41st Vice President of the United States \
+from 1974 to 1977"], ["Alfred Balk was an American reporter. He served as the secretary of Nelson Rockefeller's Committee on the Employment of Minority \
+Groups in the News Media."]]
+}
+```
+
+Iteration 3:
+```json
+{
+    "thought": "I found that Nelson Rockefeller was Vice President from 1974 to 1977 and Alfred Balk served as secretary of the Committee on the Employment of Minority Groups \
+in the News Media under Vice President Nelson Rockefeller. Therefore, the answer is Nelson Rockefeller.",
+    "final_answer": "Nelson Rockefeller"
+}
+```
+
+You must keep trying to find an answer until instructed otherwise. At which point, you must provide the final answer. \
+If you cannot find an answer at that time, try to provide the best reasonable answer based on the retrieved documents even if incomplete. Otherwise respond \
+with "N/A" as the final answer.
+'''
+
+REACT_FOOTER_2 = '''## EXAMPLES
+
+### Example 1
+
+Question: "Were Scott Derrickson and Ed Wood of the same nationality?"
+
+Iteration 1:
+```json
+{
+    "thought": "I need to find the nationalities of both Scott Derrickson and Ed Wood to compare them.",
+    "actions": ["search('Scott Derrickson's nationality')", "search('Ed Wood's nationality')"]
+}
+```
+
+Iteration 2:
+```json
+{
+    "thought": "I need to find the nationalities of both Scott Derrickson and Ed Wood to compare them.",
+    "actions": ["search('Scott Derrickson's nationality')", "search('Ed Wood's nationality')"],
+    "observations": [["Scott Derrickson is an American film director, producer, and screenwriter. He is known for his work in the horror genre, including \
+films like 'The Exorcism of Emily Rose' and 'Doctor Strange'."], ["Ed Wood was an American filmmaker, actor, and writer, often regarded as one of the worst directors in film history. He is best known \
+for his cult classic 'Plan 9 from Outer Space'."]]
+}
+```
+
+Iteration 3:
+```json
+{
+    "thought": "Both Scott Derrickson and Ed Wood are American based on the retrieved information, so they are of the same nationality.",
+    "final_answer": "Yes"
+}
+```
+
+### Example 2
+
+Question: "In which county is Kimbrough Memorial Stadium located?"
+
+Iteration 1:
+```json
+{
+    "thought": "I need to find where Kimbrough Memorial Stadium is located.",
+    "actions": ["search('Kimbrough Memorial Stadium location')"]
+}
+```
+
+Iteration 2:
+```json
+{
+    "thought": "I need to find where Kimbrough Memorial Stadium is located.",
+    "actions": ["search('Kimbrough Memorial Stadium location')"],
+    "observations": [["Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District, and is primarily \
+used for American football."]]
+}
+```
+
+Iteration 3:
+```json
+{
+    "thought": "The stadium is in Canyon, Texas, but I need to find which county Canyon is in.",
+    "actions": ["search('Canyon Texas county')"]
+}
+```
+
+Iteration 4:
+```json
+{
+    "thought": "The stadium is in Canyon, Texas, but I need to find which county Canyon is in.",
+    "actions": ["search('Canyon Texas county')"],
+    "observations": [["Canyon is a city in, and the county seat of, Randall County, Texas, United States. The population was 13,303 at the 2010 census."]]
+}
+```
+
+Iteration 5:
+```json
+{
+    "thought": "Kimbrough Memorial Stadium is in Canyon, Texas, and Canyon is in Randall County.",
+    "final_answer": "Randall County"
+}
+```
+'''
+
+DAG_FOOTER = '''### EXAMPLES
+
+Question: "Were Scott Derrickson and Ed Wood of the same nationality?"
+
+Response:
+{
+    "reasoning": "To answer if Scott Derrickson and Ed Wood are of the same nationality, I need to find each person's nationality separately and then compare them.",
+    "dag_plan": [
+        {
+            "node_id": "node_1",
+            "sub_question": "What is Scott Derrickson's nationality?",
+            "dependencies": []
+        },
+        {
+            "node_id": "node_2",
+            "sub_question": "What is Ed Wood's nationality?",
+            "dependencies": []
+        }
+    ]
+}
+
+Question: "In which county is the stadium owned by Canyon Independent School District located?"
+
+Response:
+{
+    "reasoning": "I need to first find what stadium is owned by Canyon Independent School District, then find where that stadium is located, \
+and finally determine which county that location is in.",
+    "dag_plan": [
+        {
+            "node_id": "node_1",
+            "sub_question": "What stadium is owned by Canyon Independent School District?",
+            "dependencies": []
+        },
+        {
+            "node_id": "node_2",
+            "sub_question": "Where is the stadium identified in node 1 located?",
+            "dependencies": ["node_1"]
+        },
+        {
+            "node_id": "node_3",
+            "sub_question": "Which county is the location identified in node 2 in?",
+            "dependencies": ["node_2"]
+        }
+    ]
+}
 '''

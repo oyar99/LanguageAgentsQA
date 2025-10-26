@@ -11,6 +11,7 @@ from azure_open_ai.chat_completions import chat_completions
 from logger.logger import Logger
 from models.action import Action
 from models.agent import SelfContainedAgent, NoteBook
+from models.dataset import Dataset
 from models.react_agent import BaseIntelligentAgent
 from models.question_answer import QuestionAnswer
 from utils.model_utils import supports_temperature_param
@@ -57,6 +58,8 @@ few-shot examples.
             "Batch reasoning is not implemented for ReactAgent Helper.")
 
 # pylint: disable-next=too-many-instance-attributes, too-few-public-methods
+
+
 class BaseDAGNode(ABC):
     """
     Base class for DAG nodes that defines the common interface.
@@ -109,7 +112,9 @@ class BaseDAGAgent(SelfContainedAgent, ABC):
     - Managing DAG job arguments and prompts
     """
 
-    def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args):
+    def __init__(self,
+                 search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]],
+                 args):
         """
         Initialize the base DAG agent.
 
@@ -132,10 +137,12 @@ keywords related to the question.",
             )
         }
 
-        self._subquestion_agent = ReactAgent(
-            actions, PROMPT_EXAMPLES_TOOLS, args)
+        # extra prompt is passed during indexing instead
+        self._subquestion_agent = ReactAgent(actions, "", args)
 
-    def index(self, _):
+        self.dag_prompt = ""
+
+    def index(self, dataset: Dataset) -> None:
         """
         Index the dataset for the DAG agent.
         """
@@ -143,6 +150,16 @@ keywords related to the question.",
         # Actual fix should be to re-design how react_agent returns results
         # pylint: disable-next=protected-access
         self._subquestion_agent._corpus = self._corpus
+
+        # TODO: Refactor agent so it updates the prompt based on the dataset received during indexing.
+        # To do this, we need to ensure all super classes of BaseIntelligentAgent call super().index(dataset)
+        self._subquestion_agent._prompt += dataset.get_prompt(
+            'react_footer')
+
+        # Initializes prompts
+        self.dag_prompt = BASE_DAG_PROMPT + dataset.get_prompt('dag_footer')
+
+        Logger().debug(f"DAG Agent prompt: {self.dag_prompt}")
 
     def _parse_dag_plan(self, response_content: str, node_class) -> Dict[str, Any]:
         """
@@ -229,8 +246,6 @@ keywords related to the question.",
     def _create_dag_plan(
         self,
         question: str,
-        dag_prompt: str,
-        custom_id: str = "dag_planning"
     ) -> Tuple[str, Dict[str, int]]:
         """
         Create a DAG plan using the specified model and prompt.
@@ -244,10 +259,10 @@ keywords related to the question.",
             Tuple[str, Dict[str, int]]: DAG plan response content and usage metrics
         """
         open_ai_request = {
-            "custom_id": custom_id,
+            "custom_id": "dag_planning",
             "model": self._think_model,
             "messages": [
-                {"role": "system", "content": dag_prompt},
+                {"role": "system", "content": self.dag_prompt},
                 {"role": "user", "content": f"Question: {question}"}
             ],
             "temperature": DEFAULT_DAG_JOB_ARGS['temperature']
@@ -419,7 +434,6 @@ DEFAULT_DAG_JOB_ARGS = {
     'presence_penalty': 0.0
 }
 
-# Common DAG planning prompt used by both DAG agents
 BASE_DAG_PROMPT = '''You are an expert question decomposition agent. Your task is to analyze a complex \
 question and break it down into a directed acyclic graph (DAG) of sub-questions. Each sub-question should \
 build towards answering the main question, and should have clear dependencies on other sub-questions when needed. \
@@ -430,88 +444,4 @@ Dependencies should reference the node IDs of other sub-questions that must be a
 
 If the question can be answered directly without decomposition, create a single node with no dependencies.
 
-## EXAMPLES
-
-Question: "Were Scott Derrickson and Ed Wood of the same nationality?"
-
-Response:
-{
-    "reasoning": "To answer if Scott Derrickson and Ed Wood are of the same nationality, I need to find each person's nationality separately and then compare them.",
-    "dag_plan": [
-        {
-            "node_id": "node_1",
-            "sub_question": "What is Scott Derrickson's nationality?",
-            "dependencies": []
-        },
-        {
-            "node_id": "node_2",
-            "sub_question": "What is Ed Wood's nationality?",
-            "dependencies": []
-        }
-    ]
-}
-
-Question: "In which county is the stadium owned by Canyon Independent School District located?"
-
-Response:
-{
-    "reasoning": "I need to first find what stadium is owned by Canyon Independent School District, then find where that stadium is located, \
-and finally determine which county that location is in.",
-    "dag_plan": [
-        {
-            "node_id": "node_1",
-            "sub_question": "What stadium is owned by Canyon Independent School District?",
-            "dependencies": []
-        },
-        {
-            "node_id": "node_2",
-            "sub_question": "Where is the stadium identified in node 1 located?",
-            "dependencies": ["node_1"]
-        },
-        {
-            "node_id": "node_3",
-            "sub_question": "Which county is the location identified in node 2 in?",
-            "dependencies": ["node_2"]
-        }
-    ]
-}
-'''
-
-PROMPT_EXAMPLES_TOOLS = '''### Example
-
-Question: Which United States Vice President was in office during the time Alfred Balk served as secretary of the Committee?
-
-Iteration 1:
-```json
-{
-    "thought": "I need to find information about United States Vice Presidents and information about Alfred Balk during the time \
-he served as secretary.",
-    "actions": ["search('United States Vice Presidents')", "search('Alfred Balk's biography')"]
-}
-```
-
-Iteration 2:
-```json
-{
-    "thought": "I need to find information about United States Vice Presidents and information about Alfred Balk during the time \
-he served as secretary.",
-    "actions": ["search('United States Vice Presidents')", "search('Alfred Balk's biography')"]
-    "observations": [["Nelson Aldrich Rockefeller was an American businessman and politician who served as the 41st Vice President of the United States \
-from 1974 to 1977"], ["Alfred Balk was an American reporter. He served as the secretary of Nelson Rockefeller's Committee on the Employment of Minority \
-Groups in the News Media."]]
-}
-```
-
-Iteration 3:
-```json
-{
-    "thought": "I found that Nelson Rockefeller was Vice President from 1974 to 1977 and Alfred Balk served as secretary of the Committee on the Employment of Minority Groups \
-in the News Media under Vice President Nelson Rockefeller. Therefore, the answer is Nelson Rockefeller.",
-    "final_answer": "Nelson Rockefeller"
-}
-```
-
-You must keep trying to find an answer until instructed otherwise. At which point, you must provide the final answer. \
-If you cannot find an answer at that time, try to provide the best reasonable answer based on the retrieved documents even if incomplete. Otherwise respond \
-with "N/A" as the final answer.
 '''

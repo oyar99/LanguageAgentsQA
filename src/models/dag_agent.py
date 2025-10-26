@@ -18,7 +18,7 @@ from models.agent import (
     NoteBook,
     SingleProcessAgent
 )
-from models.base_dag import BaseDAGAgent as BaseDag, BaseDAGNode, BASE_DAG_PROMPT, DEFAULT_DAG_JOB_ARGS
+from models.base_dag import BaseDAGAgent as BaseDag, BaseDAGNode, DEFAULT_DAG_JOB_ARGS
 from models.react_agent import BaseIntelligentAgent
 from models.retrieved_result import RetrievedResult
 from models.question_answer import QuestionAnswer
@@ -142,8 +142,6 @@ class BaseDAGAgent(BaseDag, ABC):
         super().__init__(search_function, args)
         self._search_function = search_function
         self._max_iterations = 8
-
-        Logger().debug(f"DAG Agent prompt: {BASE_DAG_PROMPT}")
 
 
     def _commands_support_tools(self, available_tools: List[str] = None) -> bool:
@@ -807,8 +805,7 @@ which may indicate excessive backtracking.")
         sources: Dict[str, List[RetrievedResult]] = {}
 
         # Phase 1: Generate DAG plan
-        response_content, planning_usage = self._create_dag_plan(
-            question, BASE_DAG_PROMPT, "dag_planning")
+        response_content, planning_usage = self._create_dag_plan(question)
 
         # Update usage metrics
         for key in usage_metrics:
@@ -914,7 +911,7 @@ class DAGAgent(BaseDAGAgent, MultiprocessingSearchAgent, ABC):
     A multiprocessing DAG agent.
     """
 
-    def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=24):
+    def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=2):
         MultiprocessingSearchAgent.__init__(self, args, cores=cores)
         BaseDAGAgent.__init__(self, search_function, args)
 
