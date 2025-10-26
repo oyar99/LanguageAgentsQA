@@ -89,8 +89,6 @@ class BaseIntelligentAgent(SelfContainedAgent, ABC):
         if len(examples) > 0:
             self._prompt += f"\n## EXAMPLES\n{examples}"
 
-        Logger().debug(f"Agent prompt: {self._prompt}")
-
     # pylint: disable-next=too-many-branches
     def _parse_action(self, action: str) -> Tuple[Callable[..., Tuple[list[str], list[str], Dict[str, str]]], ...]:
         """

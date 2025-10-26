@@ -158,6 +158,8 @@ keywords related to the question.",
         self.dag_prompt = BASE_DAG_PROMPT + dataset.get_prompt('dag_footer')
 
         Logger().debug(f"DAG Agent prompt: {self.dag_prompt}")
+        # pylint: disable-next=protected-access
+        Logger().debug(f"ReAct Agent prompt: {self._subquestion_agent._prompt}")
 
     def _parse_dag_plan(self, response_content: str, node_class) -> Dict[str, Any]:
         """

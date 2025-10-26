@@ -66,7 +66,12 @@ class Locomo(Dataset):
             'qa_all': QA_PROMPT_ALL,
             'dag_footer': DAG_DECOMPOSITION_FOOTER,
             'react_footer': REACT_FOOTER,
-            'react_footer_2': REACT_FOOTER
+            'react_footer_2': REACT_FOOTER,
+            'dag_execution_footer': DAG_EXECUTION_FOOTER,
+            'dag_synthesis_footer': DAG_SYNTHESIS_FOOTER,
+            'solve_command_example': SOLVE_COMMAND_EXAMPLE,
+            'final_answer_command_example': FINAL_ANSWER_COMMAND_EXAMPLE,
+            'alternative_answer_command_example': ALTERNATIVE_ANSWER_COMMAND_EXAMPLE,
         }
         Logger().info("Initialized an instance of the Locomo dataset")
 
@@ -91,7 +96,7 @@ class Locomo(Dataset):
 
             dataset = []
             for cs in data:
-                if conversation_id is None or cs['sample_id'] == conversation_id:
+                if conversation_id is None or (cs['sample_id'] == 'conv-26'): # or cs['sample_id'] == 'conv-30'):
                     # Shuffle questions within each conversation if shuffle is enabled
                     qa_list = cs['qa']
                     if self._args.shuffle:
@@ -321,46 +326,45 @@ Iteration 2:
     "actions": ["search('Maria adopted Coco')", "search('Maria adopted Shadow')"],
     "observations": [["At around 12:10 am on 11 August, 2023, during message 1, Maria said: Hey John! Long time no talk! \
 Guess what - I got a puppy two weeks ago! Her name's Coco and she's adorable. - Attached image: a photo of a white dog laying in the grass with a baseball"], ["At \
-around 3:14 pm on 13 August, 2023, during message 4, Maria said: Her name is Shadow! She's full of energy and always puts a smile on my face. She's \
-been a great addition to my life. They get along great."]]
+around 3:14 pm on 13 August, 2023, during message 2, Maria said: Wow, John! You're doing great things. Kudos for helping kids learn. On another note, I \
+just adopted this cute pup from a shelter. She brings so much joy! I feel blessed to be able to give her a home."]]
 }
 ```
 
 Iteration 3:
 ```json
 {
-    "thought": "Maria mentioned she got Coco two weeks ago from 11 August, 2023. She did not specify when she adopted Shadow, \
-so I need to find out if she shared more information about adopting a dog.",
-    "actions": ["search('Maria adopted a dog')"]
+    "thought": "Maria mentioned she got Coco two weeks ago from 11 August, 2023. I did not find information about Shadow, but I found that she \
+adopted another dog on 13 August, 2023. I need to search for more messages around that date to find out if that dog is named Shadow.",
+    "actions": ["search('Maria and John messages 3 and 4 on 13 August, 2023 at around 3:14 pm about the adopted dog')"]
 }
 ```
 
 Iteration 4:
 ```json
 {
-    "thought": "Maria mentioned she got Coco two weeks ago from 11 August, 2023. She did not specify when she adopted Shadow, \
-so I need to find out if she shared more information about adopting a dog.",
-    "actions": ["search('Maria adopted a dog')"],
-    "observations": [["At around 12:10 am on 11 August, 2023, during message 1, Maria said: Hey John! Long time no talk! \
-Guess what - I got a puppy two weeks ago! Her name's Coco and she's adorable. - Attached image: a photo of a white dog laying in the grass with a baseball", "At around \
-3:14 pm on 13 August, 2023, during message 2, Maria said: Wow, John! You're doing great things. Kudos for helping kids learn. On another note, I just adopted \
-this cute pup from a shelter last week. She brings so much joy! I feel blessed to be able to give her a home."]]
+    "thought": "Maria mentioned she got Coco two weeks ago from 11 August, 2023. I did not find information about Shadow, but I found that she \
+adopted another dog on 13 August, 2023. I need to search for more messages around that date to find out if that dog is named Shadow.",
+    "actions": ["search('Maria message 3 and 4 on 13 August, 2023 at around 3:14 pm about the adopted dog')"]
+    "observations": [["At around 3:14 pm on 13 August, 2023, during message 3, John said: Wow, Maria, how cute! What's her name? Do she and your other dog \
+get along?", "At around 3:14 pm on 13 August, 2023, during message 4, Maria said: Her name is Shadow! She's full of energy and always puts a smile on my \
+face. She's been a great addition to my life. They get along great."]]
 }
 ```
 
 Iteration 5:
 ```json
 {
-    "thought": "Maria mentioned she adopted a dog from a shelter last week from 13 August, 2023. She got Coco two weeks ago from 11 August, 2023. \
-This means there is more than one week between adopting Coco and Shadow.",
-    "final_answer": "More than one week"
+    "thought": "Maria mentioned she adopted a dog on 13 August, 2023. She got Coco two weeks ago from 11 August, 2023. \
+This means there were approximately two weeks between Coco and Shadow adoption.",
+    "final_answer": "two weeks"
 }
 ```
 '''
 
 DAG_DECOMPOSITION_FOOTER = '''The questions are based on a dataset of conversations between two users. \
 Each conversation consists of multiple messages exchanged over several days. Each message includes a timestamp indicating when it was sent.
-Most questions can be answered directly from a single message, while others may require synthesizing information from multiple messages.
+If a question structure is simple and does not require multiple steps to answer, you must create a DAG with a single node as per the examples below.
 
 ## EXAMPLES
 
@@ -401,5 +405,295 @@ those two dates.",
             "dependencies": ["node_1", "node_2"]
         }
     ]
+}
+'''
+
+DAG_EXECUTION_FOOTER = '''### Example
+
+[
+    {
+        "node_id": "node_1",
+        "sub_question": "What is the date Maria adopted Coco?",
+        "dependencies": []
+    },
+    {
+        "node_id": "node_2", 
+        "sub_question": "What is the date Maria adopted Shadow?",
+        "dependencies": []
+    },
+    {
+        "node_id": "node_3",
+        "sub_question": "How many weeks passed between the adoption of Coco and Shadow?",
+        "dependencies": ["node_1", "node_2"]
+    }
+]
+
+Iteration 1:
+```json
+{
+    "thought": "I have a DAG plan with 3 nodes where node_3 depends on node_1 and node_2. I should start by solving node_1 first.",
+    "actions": ["answer('Maria adoption date Coco', 'node_1')"]
+}
+```
+
+Iteration 2:
+```json
+{
+    "thought": "I have a DAG plan with 3 nodes where node_3 depends on node_1 and node_2. I should start by solving node_1 first.",
+    "actions": ["answer('Maria adoption date Coco', 'node_1')"]
+    "observations": [["
+    [{
+        "node_id": "node_1",
+        "sub_question": "What is the date Maria adopted Coco?",
+        "dependencies": [],
+        "result": "2 weeks before 11 August, 2023",
+        "context": "Maria mentioned she got a puppy named Coco two weeks before 11 August, 2023 when she sent a message on that date.",
+        "sources": ["At around 12:10 am on 11 August, 2023, during message 1, Maria said: Hey John! Long time no talk! Guess what - I got a puppy two \
+weeks ago! Her name's Coco and she's adorable"]
+    }]
+"]]
+}
+```
+
+Iteration 3:
+```json
+{
+    "thought": "Node_1 is complete and shows that Maria adopted Coco 2 weeks before 11 August, 2023. Now I need to solve node_2.",
+    "actions": ["answer('Maria adoption date Shadow', 'node_2')"]
+}
+```
+
+Iteration 4:
+```json
+{
+    "thought": "Node_1 is complete and shows that Maria adopted Coco 2 weeks before 11 August, 2023. Now I need to solve node_2.",
+    "actions": ["answer('Maria adoption date Shadow', 'node_2')"]
+    "observations": [["
+    [{
+        "node_id": "node_2",
+        "sub_question": "What is the date Maria adopted Shadow?",
+        "dependencies": [],
+        "result": "Maria adopted Shadow on August 13, 2023",
+        "context": "Maria sent a message on 13 August, 2023 mentioning she just adopted a dog. In a later message on the same day, she revealed the dog's name is Shadow.",
+        "sources": ["At around 3:14 pm on 13 August, 2023, during message 2, Maria said: Wow, John! You're doing great things. Kudos for helping kids learn. On \
+another note, I just adopted this cute pup from a shelter. She brings so much joy! I feel blessed to be able to give her a home.", "At around 3:14 pm on 13 \
+August, 2023, during message 4, Maria said: Her name is Shadow! She's full of energy and always puts a smile on my face. She's been a great addition to my life. They \
+get along great."]
+    }]
+"]]
+}
+```
+
+Iteration 5:
+```json
+{
+    "thought": "node_2 is complete and shows that Maria adopted Shadow on August 13, 2023. Now that I have the results for node_1 and node_2, I can answer node_3 \
+directly. Since Maria adopted Coco 2 weeks before 11 August, 2023, and she adopted Shadow two days later on 13 August, 2023, it means that 2 weeks passed between the two adoptions.",
+    "actions": ["update_node('2 weeks', 'node_3')"]
+}
+```
+
+Iteration 6:
+```json
+{
+    "thought": "node_2 is complete and shows that Maria adopted Shadow on August 13, 2023. Now that I have the results for node_1 and node_2, I can answer node_3 \
+directly. Since Maria adopted Coco 2 weeks before 11 August, 2023, and she adopted Shadow two days later on 13 August, 2023, it means that 2 weeks passed between the two adoptions.",
+    "actions": ["update_node('2 weeks', 'node_3')"]
+    "observations": [["All dependent nodes are complete or no more nodes can be solved. DAG execution may be finished."]]
+}
+```
+
+Iteration 7:
+```json
+{
+    "thought": "All nodes are now complete.",
+    "final_answer": "EXECUTION_COMPLETE"
+}
+```
+
+**IMPORTANT**: Your responses MUST NEVER contain any observations under absolutely no circumstances. Observations are returned to you after each action \
+and are not part of your response. You must only respond with the JSON structure containing your thoughts and actions, or the final answer when ready.
+'''
+
+DAG_SYNTHESIS_FOOTER = '''### Example
+
+## DAG State
+
+[
+  {
+    "node_id": "node_1",
+    "sub_question": "What is the date Maria adopted Coco?",
+    "dependencies": [],
+    "result": "2 weeks before 11 August, 2023",
+    "context": "I found that Maria mentioned she got a puppy named Coco two weeks before 11 August, 2023 when she sent a message on that date."
+  },
+  {
+    "node_id": "node_2",
+    "sub_question": "What is the date Maria adopted Shadow?",
+    "dependencies": [],
+    "result": "August 13, 2023",
+    "context": "I found that Maria sent a message on 13 August, 2023 mentioning she just adopted a dog. In a later message on the same day, she \
+revealed the dog's name is Shadow."
+  },
+  {
+    "node_id": "node_3",
+    "sub_question": "How many weeks passed between the adoption of Coco and Shadow?",
+    "dependencies": [
+      "node_1",
+      "node_2"
+    ],
+    "result": "2 weeks",
+  }
+]
+
+Question: "How many weeks passed between Maria adopting Coco and Shadow?"
+
+Output:
+{
+    "thought": "Using the results from node_1 and node_2, Maria adopted Coco 2 weeks before 11 August, 2023, and she adopted Shadow on August 13, 2023. \
+This means that 2 weeks passed between the two adoptions.",
+    "answer": "2 weeks"
+}
+'''
+
+SOLVE_COMMAND_EXAMPLE = '''### Example
+
+DAG Plan:
+[
+    {
+        "node_id": "node_1",
+        "sub_question": "When did Caroline go to the adoption meeting?",
+        "dependencies": []
+    }
+]
+
+SOLVE(node_id="node_1")
+
+Output:
+
+{
+    "thought": "This is a simple single-node question that doesn't depend on any other nodes. I need to search for information about Caroline's adoption meeting.",
+    "answer": "",
+    "tool": "SEARCH",
+    "query": "When did Caroline go to the adoption meeting?"
+}
+
+### Example
+
+DAG Plan:
+[
+    {
+        "node_id": "node_1",
+        "sub_question": "What is the date Maria adopted Coco?",
+        "dependencies": [],
+        "result": "2 weeks before 11 August, 2023"
+    },
+    {
+        "node_id": "node_2",
+        "sub_question": "What is the date Maria adopted Shadow?",
+        "dependencies": [],
+        "result": "August 13, 2023"
+    },
+    {
+        "node_id": "node_3",
+        "sub_question": "How many weeks passed between the adoption of Coco and Shadow?",
+        "dependencies": ["node_1", "node_2"]
+    }
+]
+
+SOLVE(node_id="node_3")
+
+Output:
+{
+    "thought": "Node_3 depends on node_1 and node_2, which found that Maria adopted Coco 2 weeks before 11 August, 2023 (so around July 28, 2023) \
+and she adopted Shadow on August 13, 2023. Based on the conversation context, the time difference between these two adoptions is 2 weeks.",
+    "answer": "2 weeks"
+}
+'''
+
+FINAL_ANSWER_COMMAND_EXAMPLE = '''### Example
+
+DAG Plan:
+[
+  {
+    "node_id": "node_1",
+    "sub_question": "What is the date Maria adopted Coco?",
+    "dependencies": [],
+    "result": "2 weeks before 11 August, 2023",
+    "context": "I found that Maria mentioned she got a puppy named Coco two weeks before 11 August, 2023 when she sent a message on that date."
+  },
+  {
+    "node_id": "node_2",
+    "sub_question": "What is the date Maria adopted Shadow?",
+    "dependencies": [],
+    "result": "August 13, 2023",
+    "context": "I found that Maria sent a message on 13 August, 2023 mentioning she just adopted a dog. In a later message on the same day, she revealed the dog's name is Shadow."
+  },
+  {
+    "node_id": "node_3",
+    "sub_question": "How many weeks passed between the adoption of Coco and Shadow?",
+    "dependencies": [
+      "node_1",
+      "node_2"
+    ],
+    "result": "2 weeks"
+  }
+]
+
+SOLVE(question="How many weeks passed between Maria adopting Coco and Shadow?")
+
+Output:
+{
+    "thought": "Using the results from node_1 and node_2, Maria adopted Coco 2 weeks before 11 August, 2023, and she adopted Shadow on August 13, 2023. \
+This means that 2 weeks passed between the two adoptions.",
+    "answer": "2 weeks"
+}
+
+### Example
+
+DAG Plan:
+[
+  {
+    "node_id": "node_1",
+    "sub_question": "When did Caroline go to the adoption meeting?",
+    "dependencies": [],
+    "result": "March 15, 2023",
+    "context": "Caroline mentioned in a conversation that she went to an adoption meeting on March 15, 2023."
+  }
+]
+
+SOLVE(question="When did Caroline go to the adoption meeting?")
+
+Output:
+{
+    "thought": "Based on node_1, Caroline went to the adoption meeting on March 15, 2023.",
+    "answer": "March 15, 2023"
+}
+'''
+
+ALTERNATIVE_ANSWER_COMMAND_EXAMPLE = '''### Example
+
+[
+    {
+        "node_id": "node_1",
+        "sub_question": "Where did Caroline move from 4 years ago?",
+        "dependencies": [],
+        "result": "Sweden",
+        "sources": [
+            "At around 11:30 am on 9 June, 2023, during message 22, Caroline said: I moved here from Sweden 4 years ago, and it was quite an adjustment.",
+            "At around 2:45 pm on 15 July, 2023, during message 25, Caroline said: Back in Stockholm, I had a different life. Moving to this country changed everything for me."
+        ]
+    }
+]
+
+ALTERNATIVE_ANSWER(node_id="node_1", exclude=["Sweden"])
+
+Output:
+
+{
+    "thought": "Analyzing the sources more carefully, Caroline mentions she moved from Sweden but also specifically references \
+'Stockholm' in one of the messages. Stockholm is the capital city of Sweden, so I can provide 'Stockholm' as an \
+alternative, more specific answer to where she moved from.",
+    "answer": "Stockholm"
 }
 '''

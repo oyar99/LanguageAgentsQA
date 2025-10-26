@@ -19,6 +19,7 @@ from models.agent import (
     SingleProcessAgent
 )
 from models.base_dag import BaseDAGAgent as BaseDag, BaseDAGNode, DEFAULT_DAG_JOB_ARGS
+from models.dataset import Dataset
 from models.react_agent import BaseIntelligentAgent
 from models.retrieved_result import RetrievedResult
 from models.question_answer import QuestionAnswer
@@ -143,6 +144,9 @@ class BaseDAGAgent(BaseDag, ABC):
         self._search_function = search_function
         self._max_iterations = 8
 
+        self.solve_command_example = ""
+        self.final_answer_command_example = ""
+        self.alternative_answer_command_example = ""
 
     def _commands_support_tools(self, available_tools: List[str] = None) -> bool:
         """
@@ -346,139 +350,11 @@ Do not provide any explanations or additional text. Only respond with the exact 
 
         # Build examples section based on available tools
         examples = {}
-        examples["SOLVE"] = '''### Example
+        examples["SOLVE"] = self.solve_command_example
 
-DAG Plan:
-[
-    {
-        "node_id": "node_1",
-        "sub_question": "What stadium is owned by Canyon Independent School District?",
-        "dependencies": [],
-        "result": "Canyon Independent School District owns Kimbrough Memorial Stadium."
-    },
-    {
-        "node_id": "node_2",
-        "sub_question": "Where is the stadium identified in node 1 located?",
-        "dependencies": ["node_1"]
-    }
-]
+        examples["ALTERNATIVE_ANSWER"] = self.alternative_answer_command_example
 
-SOLVE(node_id="node_2")
-
-Output:
-
-{
-    "thought": "Node_2 depends on node_1, which found that Canyon Independent School District owns \
-Kimbrough Memorial Stadium. Since there is not enough informatiopn to answer sub-question "Where is the stadium identified in node 1 located?", \
-I need to invoke the SEARCH tool with a query that replaces the reference 'stadium identified in node 1 with the \
-actual stadium name.",
-    "answer": "",
-    "tool": "SEARCH",
-    "query": "Where is Kimbrough Memorial Stadium located?"
-}
-
-### Example
-
-DAG Plan:
-[
-    {
-        "node_id": "node_1",
-        "sub_question": "What is Luis Diaz's nationality?",
-        "dependencies": [],
-        "result": "Luiz Diaz is from Colombia."
-    },
-    {
-        "node_id": "node_2",
-        "sub_question": "What is Mohamed Salah nationality?",
-        "dependencies": [],
-        "result": "Mohamed Salah is from Egypt."
-    },
-    {
-        "node_id": "node_3",
-        "sub_question": "Are Luis Diaz and Mohamed Salah from the same country?",
-        "dependencies": ["node_1", "node_2"]
-    }
-]
-
-SOLVE(node_id="node_3")
-
-Output:
-{
-    "thought": "Node_3 depends on node_1 and node_2, which found that Luis Diaz is from Colombia \
-and Mohamed Salah is from Egypt. Since the two players are from different countries, I can answer the sub-question directly.",
-    "answer": "Luis Diaz is from Colombia and Mohamed Salah is from Egypt, so they are not from the same country."
-}
-'''
-
-        examples["ALTERNATIVE_ANSWER"] = '''### Example
-
-[
-    {
-        "node_id": "node_1",
-        "sub_question": "What stadium is owned by Canyon Independent School District?",
-        "dependencies": [],
-        "result": "Canyon Independent School District owns Kimbrough Memorial Stadium.",
-        "sources": [
-            "Canyon Independent School District owns Kimbrough Memorial Stadium",
-            "Liberty Stadium, owned by Kanyon ISD, has a capacity of 16,000"
-        ]
-    },
-    {
-        "node_id": "node_2",
-        "sub_question": "Where is the stadium identified in node 1 located?",
-        "dependencies": ["node_1"]
-    }
-]
-
-ALTERNATIVE_ANSWER(node_id="node_1", exclude=["Lubbock, Texas"])
-
-Output:
-
-{
-    "thought": "Analyzing the sources, I see that it mentions 'Kanyon ISD' which could be a typo \
-or alternative name for 'Canyon ISD'. This suggests that 'Liberty Stadium' might also be owned by \
-the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative answer.",
-    "answer": "Liberty Stadium"
-}'''
-
-        examples["FINAL_ANSWER"] = '''### Example
-
-DAG Plan:
-[
-  {
-    "node_id": "node_1",
-    "sub_question": "What is Chris Menges' occupation?",
-    "dependencies": [],
-    "result": "cinematographer and director",
-    "context": "I found that Chris Menges is an English cinematographer and film director."
-  },
-  {
-    "node_id": "node_2",
-    "sub_question": "What is Aram Avakian's occupation?",
-    "dependencies": [],
-    "result": "film editor and director",
-    "context": "I found that Aram Avakian was an Armenian-American film editor and director."
-  },
-  {
-    "node_id": "node_3",
-    "sub_question": "Do Chris Menges and Aram Avakian have the same occupation?",
-    "dependencies": [
-      "node_1",
-      "node_2"
-    ],
-    "result": "Chris Menges is a cinematographer and film director, while Aram Avakian is a film editor and director, so they do not have the same occupation."
-  }
-]
-
-SOLVE(question="What occupation do Chris Menges and Aram Avakian share?")
-
-Output:
-{
-    "thought": "Aram Avakian was an Armenian-American film editor and director. Chris Menges is an English cinematographer and film director. \
-While they have different primary occupations, they both share the occupation of being a director.",
-    "answer": "director"
-}
-'''
+        examples["FINAL_ANSWER"] = self.final_answer_command_example
 
         # Filter examples based on available tools
         filtered_examples = []
@@ -780,6 +656,22 @@ which may indicate excessive backtracking.")
             user_query, "dag_synthesis", dag_state, available_tools=["FINAL_ANSWER"])
 
         return final_answer, usage_metrics
+
+    def index(self, dataset: Dataset) -> None:
+        """
+        Prepares the agent with the given dataset.
+
+        Args:
+            dataset (Dataset): the dataset to process
+        """
+        self.solve_command_example = dataset.get_prompt(
+            'solve_command_example')
+        self.final_answer_command_example = dataset.get_prompt(
+            'final_answer_command_example')
+        self.alternative_answer_command_example = dataset.get_prompt(
+            'alternative_answer_command_example')
+
+        super().index(dataset)
 
     # pylint: disable-next=too-many-locals
     def reason(self, question: str) -> NoteBook:

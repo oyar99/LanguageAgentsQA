@@ -65,7 +65,12 @@ class Dataset(ABC):
             'qa_all': QA_PROMPT_ALL,
             'react_footer': REACT_FOOTER,
             'react_footer_2': REACT_FOOTER_2,
-            'dag_footer': DAG_FOOTER
+            'dag_footer': DAG_FOOTER,
+            'dag_execution_footer': DAG_EXECUTION_FOOTER,
+            'dag_synthesis_footer': DAG_SYNTHESIS_FOOTER,
+            'solve_command_example': SOLVE_COMMAND_EXAMPLE,
+            'final_answer_command_example': FINAL_ANSWER_COMMAND_EXAMPLE,
+            'alternative_answer_command_example': ALTERNATIVE_ANSWER_COMMAND_EXAMPLE,
         }
 
         self.name = name
@@ -468,5 +473,259 @@ and finally determine which county that location is in.",
             "dependencies": ["node_2"]
         }
     ]
+}
+'''
+
+DAG_EXECUTION_FOOTER = '''### Example
+
+[
+    {
+        "node_id": "node_1",
+        "sub_question": "What is the location of Kimbrough Memorial Stadium?",
+        "dependencies": []
+    },
+    {
+        "node_id": "node_2", 
+        "sub_question": "In which county is the stadium from node 1 located?",
+        "dependencies": ["node_1"]
+    }
+]
+
+Iteration 1:
+```json
+{
+    "thought": "I have a DAG plan with 2 nodes where node_2 depends on node_1. I should start by solving node_1 first.",
+    "actions": ["answer('Kimbrough Memorial Stadium location', 'node_1')"]
+}
+```
+
+Iteration 2:
+```json
+{
+    "thought": "I have a DAG plan with 2 nodes where node_2 depends on node_1. I should start by solving node_1 first.",
+    "actions": ["answer('Kimbrough Memorial Stadium location', 'node_1')"],
+    "observations": [["
+    [{
+        "node_id": "node_1",
+        "sub_question": "What is the location of Kimbrough Memorial Stadium?",
+        "dependencies": [],
+        "result": "Canyon, Texas",
+        "context": "Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District.",
+        "sources": ["Doc1", "Doc2"]
+    }]
+"]]
+}
+```
+
+Iteration 3:
+```json
+{
+    "thought": "Node_1 is complete and shows the stadium is in Canyon, Texas. Now I need to solve node_2, but I must reformulate the query to replace 'stadium \
+from node 1' with the actual location found.",
+    "actions": ["answer('Canyon Texas' location', 'node_2')"]
+}
+```
+
+Iteration 4:
+```json
+{
+    "thought": "Node_1 is complete and shows the stadium is in Canyon, Texas. Now I need to solve node_2, but I must reformulate the query to replace 'stadium \
+from node 1' with the actual location found.",
+    "actions": ["answer('Canyon Texas' location', 'node_2')"],
+    "observations": [["
+    [{
+        "node_id": "node_2",
+        "sub_question": "In which county is the stadium from node 1 located?",
+        "dependencies": ["node_1"],
+        "result": "Randall County",
+        "context": "Canyon is a city in, and the county seat of, Randall County, Texas, United States.",
+        "sources": ["Doc3", "Doc4"]
+    }]
+"]]
+}
+```
+
+Iteration 5:
+```json
+{
+    "thought": "All nodes are now complete.",
+    "final_answer": "EXECUTION_COMPLETE"
+}
+```
+
+**IMPORTANT**: Your responses MUST NEVER contain any observations under absolutely no circumstances. Observations are returned to you after each action \
+and are not part of your response. You must only respond with the JSON structure containing your thoughts and actions, or the final answer when ready.
+'''
+
+DAG_SYNTHESIS_FOOTER = '''### Example
+
+## DAG State
+
+[
+  {
+    "node_id": "node_1",
+    "sub_question": "What is Chris Menges' occupation?",
+    "dependencies": [],
+    "result": "cinematographer and director",
+    "context": "I found that Chris Menges is an English cinematographer and film director."
+  },
+  {
+    "node_id": "node_2",
+    "sub_question": "What is Aram Avakian's occupation?",
+    "dependencies": [],
+    "result": "film editor and director",
+    "context": "I found that Aram Avakian was an Armenian-American film editor and director."
+  },
+  {
+    "node_id": "node_3",
+    "sub_question": "Do Chris Menges and Aram Avakian have the same occupation?",
+    "dependencies": [
+      "node_1",
+      "node_2"
+    ],
+    "result": "Chris Menges is a cinematographer and film director, while Aram Avakian is a film editor and director, so they do not have the same occupation."
+  }
+]
+
+Output:
+{
+    "thought": "Aram Avakian was an Armenian-American film editor and director. Chris Menges is an English cinematographer and film director. \
+While they have different primary occupations, they both share the occupation of being a director.",
+    "answer": "director"
+}
+'''
+
+SOLVE_COMMAND_EXAMPLE = '''### Example
+
+DAG Plan:
+[
+    {
+        "node_id": "node_1",
+        "sub_question": "What stadium is owned by Canyon Independent School District?",
+        "dependencies": [],
+        "result": "Canyon Independent School District owns Kimbrough Memorial Stadium."
+    },
+    {
+        "node_id": "node_2",
+        "sub_question": "Where is the stadium identified in node 1 located?",
+        "dependencies": ["node_1"]
+    }
+]
+
+SOLVE(node_id="node_2")
+
+Output:
+
+{
+    "thought": "Node_2 depends on node_1, which found that Canyon Independent School District owns \
+Kimbrough Memorial Stadium. Since there is not enough informatiopn to answer sub-question "Where is the stadium identified in node 1 located?", \
+I need to invoke the SEARCH tool with a query that replaces the reference 'stadium identified in node 1 with the \
+actual stadium name.",
+    "answer": "",
+    "tool": "SEARCH",
+    "query": "Where is Kimbrough Memorial Stadium located?"
+}
+
+### Example
+
+DAG Plan:
+[
+    {
+        "node_id": "node_1",
+        "sub_question": "What is Luis Diaz's nationality?",
+        "dependencies": [],
+        "result": "Luiz Diaz is from Colombia."
+    },
+    {
+        "node_id": "node_2",
+        "sub_question": "What is Mohamed Salah nationality?",
+        "dependencies": [],
+        "result": "Mohamed Salah is from Egypt."
+    },
+    {
+        "node_id": "node_3",
+        "sub_question": "Are Luis Diaz and Mohamed Salah from the same country?",
+        "dependencies": ["node_1", "node_2"]
+    }
+]
+
+SOLVE(node_id="node_3")
+
+Output:
+{
+    "thought": "Node_3 depends on node_1 and node_2, which found that Luis Diaz is from Colombia \
+and Mohamed Salah is from Egypt. Since the two players are from different countries, I can answer the sub-question directly.",
+    "answer": "Luis Diaz is from Colombia and Mohamed Salah is from Egypt, so they are not from the same country."
+}
+'''
+
+FINAL_ANSWER_COMMAND_EXAMPLE = '''### Example
+
+DAG Plan:
+[
+  {
+    "node_id": "node_1",
+    "sub_question": "What is Chris Menges' occupation?",
+    "dependencies": [],
+    "result": "cinematographer and director",
+    "context": "I found that Chris Menges is an English cinematographer and film director."
+  },
+  {
+    "node_id": "node_2",
+    "sub_question": "What is Aram Avakian's occupation?",
+    "dependencies": [],
+    "result": "film editor and director",
+    "context": "I found that Aram Avakian was an Armenian-American film editor and director."
+  },
+  {
+    "node_id": "node_3",
+    "sub_question": "Do Chris Menges and Aram Avakian have the same occupation?",
+    "dependencies": [
+      "node_1",
+      "node_2"
+    ],
+    "result": "Chris Menges is a cinematographer and film director, while Aram Avakian is a film editor and director, so they do not have the same occupation."
+  }
+]
+
+SOLVE(question="What occupation do Chris Menges and Aram Avakian share?")
+
+Output:
+{
+    "thought": "Aram Avakian was an Armenian-American film editor and director. Chris Menges is an English cinematographer and film director. \
+While they have different primary occupations, they both share the occupation of being a director.",
+    "answer": "director"
+}
+'''
+
+ALTERNATIVE_ANSWER_COMMAND_EXAMPLE = '''### Example
+
+[
+    {
+        "node_id": "node_1",
+        "sub_question": "What stadium is owned by Canyon Independent School District?",
+        "dependencies": [],
+        "result": "Canyon Independent School District owns Kimbrough Memorial Stadium.",
+        "sources": [
+            "Canyon Independent School District owns Kimbrough Memorial Stadium",
+            "Liberty Stadium, owned by Kanyon ISD, has a capacity of 16,000"
+        ]
+    },
+    {
+        "node_id": "node_2",
+        "sub_question": "Where is the stadium identified in node 1 located?",
+        "dependencies": ["node_1"]
+    }
+]
+
+ALTERNATIVE_ANSWER(node_id="node_1", exclude=["Kimbrough Memorial Stadium"])
+
+Output:
+
+{
+    "thought": "Analyzing the sources, I see that it mentions 'Kanyon ISD' which could be a typo \
+or alternative name for 'Canyon ISD'. This suggests that 'Liberty Stadium' might also be owned by \
+the same entity. Therefore, I can consider 'Liberty Stadium' as an alternative answer.",
+    "answer": "Liberty Stadium"
 }
 '''

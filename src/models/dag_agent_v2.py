@@ -19,6 +19,7 @@ from models.agent import (
     SingleProcessAgent
 )
 from models.base_dag import BaseDAGAgent as BaseDag, BaseDAGNode, DEFAULT_DAG_JOB_ARGS
+from models.dataset import Dataset
 from models.react_agent import BaseIntelligentAgent
 from models.retrieved_result import RetrievedResult
 from models.question_answer import QuestionAnswer
@@ -32,7 +33,7 @@ class BaseDAGExecutionReactAgent(BaseIntelligentAgent, ABC):
     This agent receives a DAG plan and uses the answer tool to execute it.
     """
 
-    def __init__(self, actions: Dict[str, Action], examples: str, args):
+    def __init__(self, actions: Dict[str, Action], args):
         """
         Initialize the DAG execution React agent with a modified prompt.
 
@@ -42,7 +43,7 @@ class BaseDAGExecutionReactAgent(BaseIntelligentAgent, ABC):
             args: Agent arguments
         """
         BaseIntelligentAgent.__init__(
-            self, actions, examples, args, DAG_EXECUTION_REACT_PROMPT)
+            self, actions, "", args, DAG_EXECUTION_REACT_PROMPT)
 
     def index(self, _) -> None:
         """Not implemented for execution agent."""
@@ -172,19 +173,21 @@ class BaseDAGAgentV2(BaseDag, ABC):
                 "a sub-question directly without executing the answer tool. "
                 "For example, if an answer can be inferred from the result of other nodes. "
                 "You may also update an already processed node with an alternative answer to explore "
-                "different paths. The first argument is the value to update the node with, "
+                "different paths. The first argument is a string with the value to update the node with, "
                 "and the second argument is the node_id to update. Returns the updated node state. ",
                 self._update_node
             )
         }
 
         # Create the main execution React Agent with modified prompt
-        self._execution_agent = BaseDAGExecutionReactAgent(
-            actions, DAG_EXECUTION_EXAMPLES, args)
+        self._execution_agent = BaseDAGExecutionReactAgent(actions, args)
 
         self.nodes = {}
         # Track the node that failed for backtracking
         self._current_failed_node_id = None
+
+        # Initialize prompt objects
+        self.synthesis_prompt = ""
 
     def _get_backtrack_suggestion(self, failed_node_id: str) -> Tuple[str, bool]:
         """
@@ -239,6 +242,7 @@ the sub-question again with a different query.", False
         Args:
             node_id (str): The node ID to update
             answer (str): The new answer for the node
+            context (str): Additional context for the update that explains why this action is being taken
 
         Returns:
             Tuple[List[str], List[str], Dict[str, int]]: Updated DAG state, empty sources, usage metrics
@@ -292,7 +296,7 @@ If no alternative answer exists, you may call UPDATE_NODE('N/A', '{node_id}') to
 
         # Update the node with the new answer
         current_node.result = answer
-        current_node.context = f"Alternative answer provided: {answer}"
+        current_node.context = ""
         current_node.is_completed = True
         current_node.is_failed = False
         current_node.alternative_results.append(answer)
@@ -424,7 +428,7 @@ solved yet: {unsolved_str}. Please solve these dependencies first."
             self.nodes, include_sources_for=failed_node_ids)
 
         # Build the system prompt
-        system_prompt = f"{DAG_SYNTHESIS_PROMPT}\n## DAG State\n\n{dag_state}"
+        system_prompt = f"{self.synthesis_prompt}\n## DAG State\n\n{dag_state}"
 
         Logger().debug(f"""DAG Synthesis system prompt:
 {system_prompt}""")
@@ -478,6 +482,18 @@ solved yet: {unsolved_str}. Please solve these dependencies first."
         Logger().debug(
             f"Synthesized final answer: {final_answer}, reason: {reason}")
         return final_answer, usage_metrics
+
+    def index(self, dataset: Dataset) -> None:
+        """
+        Prepares the agent with the given dataset.
+
+        Args:
+            dataset (Dataset): the dataset to process
+        """
+        self._execution_agent._prompt += dataset.get_prompt('dag_execution_footer')
+        self.synthesis_prompt = DAG_SYNTHESIS_PROMPT + dataset.get_prompt('dag_synthesis_footer')
+
+        super().index(dataset)
 
     # pylint: disable-next=too-many-locals
     def reason(self, question: str) -> NoteBook:
@@ -595,87 +611,6 @@ class StatefulDAGAgentV2(BaseDAGAgentV2, MultiprocessingStatefulSearchAgent, ABC
         BaseDAGAgentV2.__init__(self, search_function, args)
 
 
-DAG_EXECUTION_EXAMPLES = '''### Example
-
-[
-    {
-        "node_id": "node_1",
-        "sub_question": "What is the location of Kimbrough Memorial Stadium?",
-        "dependencies": []
-    },
-    {
-        "node_id": "node_2", 
-        "sub_question": "In which county is the stadium from node 1 located?",
-        "dependencies": ["node_1"]
-    }
-]
-
-Iteration 1:
-```json
-{
-    "thought": "I have a DAG plan with 2 nodes where node_2 depends on node_1. I should start by solving node_1 first.",
-    "actions": ["answer('Kimbrough Memorial Stadium location', 'node_1')"]
-}
-```
-
-Iteration 2:
-```json
-{
-    "thought": "I have a DAG plan with 2 nodes where node_2 depends on node_1. I should start by solving node_1 first.",
-    "actions": ["answer('Kimbrough Memorial Stadium location', 'node_1')"],
-    "observations": [["
-    [{
-        "node_id": "node_1",
-        "sub_question": "What is the location of Kimbrough Memorial Stadium?",
-        "dependencies": [],
-        "result": "Canyon, Texas",
-        "context": "Kimbrough Memorial Stadium is a stadium in Canyon, Texas. It is owned by Canyon Independent School District.",
-        "sources": ["Doc1", "Doc2"]
-    }]
-"]]
-}
-```
-
-Iteration 3:
-```json
-{
-    "thought": "Node_1 is complete and shows the stadium is in Canyon, Texas. Now I need to solve node_2, but I must reformulate the query to replace 'stadium \
-from node 1' with the actual location found.",
-    "actions": ["answer('Canyon Texas' location', 'node_2')"]
-}
-```
-
-Iteration 4:
-```json
-{
-    "thought": "Node_1 is complete and shows the stadium is in Canyon, Texas. Now I need to solve node_2, but I must reformulate the query to replace 'stadium \
-from node 1' with the actual location found.",
-    "actions": ["answer('Canyon Texas' location', 'node_2')"],
-    "observations": [["
-    [{
-        "node_id": "node_2",
-        "sub_question": "In which county is the stadium from node 1 located?",
-        "dependencies": ["node_1"],
-        "result": "Randall County",
-        "context": "Canyon is a city in, and the county seat of, Randall County, Texas, United States.",
-        "sources": ["Doc3", "Doc4"]
-    }]
-"]]
-}
-```
-
-Iteration 5:
-```json
-{
-    "thought": "All nodes are now complete.",
-    "final_answer": "EXECUTION_COMPLETE"
-}
-```
-
-**IMPORTANT**: Your responses MUST NEVER contain any observations under absolutely no circumstances. Observations are returned to you after each action \
-and are not part of your response. You must only respond with the JSON structure containing your thoughts and actions, or the final answer when ready.
-'''
-
 DAG_EXECUTION_REACT_PROMPT = '''You are an intelligent agent that executes DAG (Directed Acyclic Graph) plans. \
 Your only responsibility is to systematically solve each sub-question in the DAG by using the available tools. \
 You should work through the DAG nodes in dependency order, solving independent nodes first, then nodes that depend on them.
@@ -694,40 +629,4 @@ question in your answer under any circumstances. If the answer can be a single w
 please provide just that word. If the information seems insufficient, please make plausible assumptions about the available information, \
 assuming typos or flexible interpretations. Only if definitely no answer exists, respond with 'N/A'.
 
-### Example
-
-## DAG State
-
-[
-  {
-    "node_id": "node_1",
-    "sub_question": "What is Chris Menges' occupation?",
-    "dependencies": [],
-    "result": "cinematographer and director",
-    "context": "I found that Chris Menges is an English cinematographer and film director."
-  },
-  {
-    "node_id": "node_2",
-    "sub_question": "What is Aram Avakian's occupation?",
-    "dependencies": [],
-    "result": "film editor and director",
-    "context": "I found that Aram Avakian was an Armenian-American film editor and director."
-  },
-  {
-    "node_id": "node_3",
-    "sub_question": "Do Chris Menges and Aram Avakian have the same occupation?",
-    "dependencies": [
-      "node_1",
-      "node_2"
-    ],
-    "result": "Chris Menges is a cinematographer and film director, while Aram Avakian is a film editor and director, so they do not have the same occupation."
-  }
-]
-
-Output:
-{
-    "thought": "Aram Avakian was an Armenian-American film editor and director. Chris Menges is an English cinematographer and film director. \
-While they have different primary occupations, they both share the occupation of being a director.",
-    "answer": "director"
-}
 '''
