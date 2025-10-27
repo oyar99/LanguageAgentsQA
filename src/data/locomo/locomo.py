@@ -215,6 +215,7 @@ class Locomo(Dataset):
             if get_content_hash(qa['question']) == message_id), None
         )
 
+# pylint: disable=duplicate-code
 
 QA_PROMPT_RELEVANT = '''You are a helpful Question Answering assistant. You will be presented with snippets from a \
 conversation between two users, followed by a question. Your task is to provide an EXACT and short answer, using words \
