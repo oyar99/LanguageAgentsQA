@@ -96,7 +96,7 @@ class Locomo(Dataset):
 
             dataset = []
             for cs in data:
-                if conversation_id is None or (cs['sample_id'] == 'conv-26'): # or cs['sample_id'] == 'conv-30'):
+                if conversation_id is None or cs['sample_id'] == conversation_id:
                     # Shuffle questions within each conversation if shuffle is enabled
                     qa_list = cs['qa']
                     if self._args.shuffle:
