@@ -61,6 +61,7 @@ class Locomo(Dataset):
     def __init__(self, args):
         super().__init__(args, name="locomo")
         # Override the default prompts
+        # pylint: disable=duplicate-code
         self._prompt_dict = {
             'qa_rel': QA_PROMPT_RELEVANT,
             'qa_all': QA_PROMPT_ALL,
@@ -73,6 +74,7 @@ class Locomo(Dataset):
             'final_answer_command_example': FINAL_ANSWER_COMMAND_EXAMPLE,
             'alternative_answer_command_example': ALTERNATIVE_ANSWER_COMMAND_EXAMPLE,
         }
+        # pylint: enable=duplicate-code
         Logger().info("Initialized an instance of the Locomo dataset")
 
     # @override
