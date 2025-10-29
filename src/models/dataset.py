@@ -617,10 +617,9 @@ SOLVE(node_id="node_2")
 Output:
 
 {
-    "thought": "Node_2 depends on node_1, which found that Canyon Independent School District owns \
-Kimbrough Memorial Stadium. Since there is not enough informatiopn to answer sub-question "Where is the stadium identified in node 1 located?", \
-I need to invoke the SEARCH tool with a query that replaces the reference 'stadium identified in node 1 with the \
-actual stadium name.",
+    "thought": "Node_2 depends on node_1, which indicates that the result to the sub-question is: Canyon Independent School District owns \
+Kimbrough Memorial Stadium. Since there is not enough informatiopn to answer the sub-question "Where is the stadium identified in node 1 located?", \
+I need to invoke the SEARCH tool using the result from node_1. Hence the query for the SEARCH tool will be 'Where is Kimbrough Memorial Stadium located?'.",
     "answer": "",
     "tool": "SEARCH",
     "query": "Where is Kimbrough Memorial Stadium located?"
@@ -632,30 +631,28 @@ DAG Plan:
 [
     {
         "node_id": "node_1",
-        "sub_question": "What is Luis Diaz's nationality?",
+        "sub_question": "Who was John V, Prince Of Anhalt-Zerbst's father?",
         "dependencies": [],
-        "result": "Luiz Diaz is from Colombia."
+        "result": "Ernest I"
+        "context: "John V, Prince of Anhalt-Zerbst, was the second son of Ernest I, Prince of Anhalt-Dessau. Therefore, his father is Ernest I."
     },
     {
         "node_id": "node_2",
-        "sub_question": "What is Mohamed Salah nationality?",
-        "dependencies": [],
-        "result": "Mohamed Salah is from Egypt."
-    },
-    {
-        "node_id": "node_3",
-        "sub_question": "Are Luis Diaz and Mohamed Salah from the same country?",
-        "dependencies": ["node_1", "node_2"]
+        "sub_question": "When did the person identified in node 1 die?",
+        "dependencies": ["node_1"],
     }
 ]
 
-SOLVE(node_id="node_3")
+SOLVE(node_id="node_2")
 
 Output:
 {
-    "thought": "Node_3 depends on node_1 and node_2, which found that Luis Diaz is from Colombia \
-and Mohamed Salah is from Egypt. Since the two players are from different countries, I can answer the sub-question directly.",
-    "answer": "Luis Diaz is from Colombia and Mohamed Salah is from Egypt, so they are not from the same country."
+    "thought": "node_2 depends on node_1, which indicates that the result to the sub-question is Ernest I. Since there is not enough information \
+to answer the sub-question When did the person identified in node 1 die?, I need to invoke the SEARCH tool using the result from node_1. \
+Hence the query for the SEARCH tool will be 'When did Ernest I die?'.",
+    "answer": "",
+    "tool": "SEARCH",
+    "query": "When did Ernest I die?"
 }
 '''
 

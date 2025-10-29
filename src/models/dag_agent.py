@@ -281,10 +281,10 @@ Thought: {structured_response['thought']}, Answer: {answer}, Tool: {tool}, Tool 
 
         # Command definitions mapping
         command_definitions = {
-            "SOLVE": """- SOLVE(node_id: str): Solve the sub-question for the given node ID using the \
-available information from its dependencies. If the information is not enough to answer the question, you must \
+            "SOLVE": """- SOLVE(node_id: str): Solve the sub-question for the given node ID using the results \
+field and the sources dependencies. Only if the information is not enough to answer the question, you must \
 invoke the SEARCH tool to find relevant documents using a query that contains all relevant keywords or entities \
-from the sub-question dependencies results and context.""",
+from the sub-question dependencies **RESULT** and **CONTEXT** fields.""",
 
             "ALTERNATIVE_ANSWER": """- ALTERNATIVE_ANSWER(node_id: str, exclude: List[str]): Provide an \
 alternative answer for the given node ID based on the sources provided. This answer must be different from \
@@ -298,8 +298,9 @@ other interpretations, or entities that may not seem related at first glance."""
 the available information from each node to formulate a CONCISE and COMPLETE answer. Provide an EXACT answer \
 using only words found in the results when possible. DO NOT REPEAT the question in your answer under any circumstances. \
 If the answer can be a single word (e.g., Yes, No, a date, or an object), please provide just that word. If the \
-information seems insufficient, please make plausible assumptions about the available information, assuming typos \
-or flexible interpretations. Only if definitely no answer exists, respond with 'N/A'."""
+information seems insufficient, please make plausible assumptions about the available information, assuming typos, flexible \
+interpretations, or best possible answer with the available information. Only if **definitely** no answer exists, \
+respond with 'N/A'."""
         }
 
         # Filter commands based on available_tools list
@@ -341,8 +342,8 @@ and not include any tool calls.
         # Commands section
         commands_prompt = '''## Commands
 
-You respond to the following types of commands. If the user does not provide a valid command, respond with "Error: Invalid command". \
-Do not provide any explanations or additional text. Only respond with the exact output as specified for each command.
+You respond to the following types of commands. Do not provide any explanations or additional text. Only respond \
+with the exact output as specified for each command.
 
 '''
 
@@ -803,7 +804,7 @@ class DAGAgent(BaseDAGAgent, MultiprocessingSearchAgent, ABC):
     A multiprocessing DAG agent.
     """
 
-    def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=2):
+    def __init__(self, search_function: Callable[[str], Tuple[List[str], List[str], Dict[str, int]]], args, cores=20):
         MultiprocessingSearchAgent.__init__(self, args, cores=cores)
         BaseDAGAgent.__init__(self, search_function, args)
 
