@@ -41,7 +41,8 @@ class Orchestrator:
             '2wiki': TwoWiki,
             'musique': MuSiQue,
             'hotpot2': Hotpot,
-            'musique2': MuSiQue
+            'musique2': MuSiQue,
+            '2wiki2': TwoWiki,
         }
 
         if args.dataset not in datasets:
