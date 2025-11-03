@@ -12,3 +12,12 @@ if __name__ == "__main__":
         input_path='dev.json',
         output_path='corpus.json',
         context_extractor=lambda context: {'title': context[0], 'text': ' '.join(context[1])})
+
+    # Read the first 1000 entries from the 2wikimultihopQA train split
+    generate_corpus(
+        input_path='train.json',
+        output_path='corpus_2.json',
+        context_extractor=lambda context: {
+            'title': context[0], 'text': ' '.join(context[1])},
+        limit=1000
+    )

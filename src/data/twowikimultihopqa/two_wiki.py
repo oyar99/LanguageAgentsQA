@@ -27,8 +27,10 @@ class TwoWiki(Dataset):
         Logger().info("Reading the 2WikiMultihopQA dataset")
         conversation_id = self._args.conversation
 
+        file_name = "train.json" if self._args.dataset == "2wiki2" else "dev.json"
+
         # pylint: disable=duplicate-code
-        file_path = os.path.join("data", "twowikimultihopqa", "dev.json")
+        file_path = os.path.join("data", "twowikimultihopqa", file_name)
         with open(file_path, encoding="utf-8") as two_wiki_dataset:
             dataset = [
                 DatasetSample(
@@ -67,7 +69,8 @@ class TwoWiki(Dataset):
             corpus (list[Document]): the corpus
         """
         Logger().info("Reading the 2Wiki dataset corpus")
-        file_path = os.path.join("data", "twowikimultihopqa", "corpus.json")
+        file_name = "corpus_2.json" if self._args.dataset == "2wiki2" else "corpus.json"
+        file_path = os.path.join("data", "twowikimultihopqa", file_name)
         with open(file_path, encoding="utf-8") as twowiki_corpus:
             corpus = json.load(twowiki_corpus)
             corpus = [

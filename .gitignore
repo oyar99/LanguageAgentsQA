@@ -176,6 +176,8 @@ src/data/hotpot/hotpot_train_v1.1.json
 # Ignore 2wikimultihopqa dataset files as they are too large
 src/data/twowikimultihopqa/dev.json
 src/data/twowikimultihopqa/corpus.json
+src/data/twowikimultihopqa/train.json
+src/data/twowikimultihopqa/corpus_2.json
 
 # Ignore musique dataset files as they are too large
 src/data/musique/musique_dev.json
