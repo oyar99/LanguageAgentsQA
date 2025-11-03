@@ -14,7 +14,7 @@ class TwoWiki(Dataset):
     """2Wiki dataset class."""
 
     def __init__(self, args):
-        super().__init__(args, name="2Wiki")
+        super().__init__(args, name=args.dataset)
         Logger().info("Initialized an instance of the 2Wiki dataset")
 
     def read(self) -> list[DatasetSample]:
