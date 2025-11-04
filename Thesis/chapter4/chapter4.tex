@@ -3,65 +3,71 @@
 \label{ch:results}
 \label{ch:chapter4}
 
+In this section, we evaluate the performance of the proposed language-agent architectures on MHQA benchmarks and compare them with baseline RAG systems. The evaluation focuses on two core components, retrieval and QA.
+
 \section{Retrieval Results}
 
 \subsection{Baselines}
 
-We first evaluated the retrieval performance of our baseline systems introduced in Section \ref{baselines_sec}. We found that ColBERTv2 consistently demonstrated strong performance across all datasets. In contrast, HippoRAG showed particularly high retrieval performance on MuSiQue, which is attributed to the dataset’s entity-centric design \cite{NEURIPS2024_6ddc001d}. However, HippoRAG underperformed on easier datasets relative to simpler methods like BM25. 
+We first evaluated the retrieval performance of the baseline systems introduced in Section \ref{baselines_sec}. ColBERTv2 consistently demonstrated strong results across all datasets. In contrast, HippoRAG achieved particularly high retrieval performance on MuSiQue, which can be attributed to the dataset’s entity-centric design \cite{NEURIPS2024_6ddc001d}. However, HippoRAG with QWen-2.5-14B underperformed on the easier datasets compared with simpler methods such as BM25, indicating a strong dependance on the underlying language model. 
 
-\noindent We also observe that MuSiQue and 2Wiki have the lowest overall retrieval scores. This is consistent with the design of these benchmarks, which introduce complexity through actual multi-hop reasoning.
+\input{chapter4/retrieval_results}
+
+\noindent We also observed that MuSiQue and 2Wiki obtained the lowest overall retrieval scores. This result is consistent with the design of these benchmarks, which introduce additional complexity by requiring genuine multi-hop reasoning.
+
+\input{chapter4/avg_retrieval_results}
 
 \noindent Table \ref{tab:retrieval_results} and Table \ref{tab:avg_retrieval_results} summarize retrieval performance across all baseline systems, reporting \textbf{recall@k} for various values of $k$. Importantly, the vast majority of questions in the datasets require no more than five passages as supporting evidence, which highlights the importance of high recall at low values of $k$ to reduce irrelevant content during the question answering phase.
 
-\input{chapter4/retrieval_results}
-\input{chapter4/avg_retrieval_results}
-
 \subsection{Cognitive Language Agents}
 
-\noindent We evaluated the retrieval performance of the language agent architectures introduced in Section \ref{agents_sec}. Unlike static retrieval baselines, these agents typically execute multiple searches while reasoning about a question, rather than issuing a single query. Consequently, the retrieved results form an unranked set of documents, and we evaluate performance using macro recall (R), macro precision (P), and macro $F_1$. 
+\noindent We evaluated the retrieval performance of the language-agent architectures introduced in Section \ref{agents_sec}. Unlike static retrieval baselines, these agents typically perform multiple searches while reasoning about a question, rather than issuing a single query. As a result, the retrieved results form an unranked set of documents, and performance is measured using macro recall (R), macro precision (P), and macro $F_1$. 
 
-\noindent We start with experimenting with the strongest retrievers, ColBERTv2 and HippoRAG, for the QA Agent. We found that the agent achieved similar retrieval performance with both. Results are shown in Table \ref{tab:retrieval_results_qa_agent}.
+\noindent We began by experimenting with the strongest retrievers, ColBERTv2 and HippoRAG, for the QA Agent. The agent achieved comparable retrieval performance with both retrievers. The results for the MHQA datasets are presented in Table \ref{tab:retrieval_results_qa_agent}.
 
 \input{chapter4/retrieval_results_qa_agent}
 
-\noindent Considering that we did not observe any significant difference between our two retrievers, we only tested ColBERTv2 on each of the QA Agent variants shown in Table \ref{tab:retrieval_results_qa_variants}.
+\noindent Given that no significant differences were observed between the two retrievers, we evaluated only ColBERTv2 across all QA Agent variants, as shown in Table \ref{tab:retrieval_results_qa_variants}.
 
 \input{chapter4/retrieval_results_qa_variants}
 
-\noindent The QA Agent with Re-ranking shows a modest drop in recall relative to the base agent, but its precision improves substantially. This indicates that the second-stage LLM-based retriever effectively prunes distractors, resulting in fewer irrelevant passages to reason over.
+\noindent The QA Agent with Re-ranking shows a modest decrease in recall relative to the base agent, but a substantial improvement in precision. This suggests that the second-stage LLM-based retriever effectively prunes distractors, leading to fewer irrelevant passages to reason over, with only minor loss in recall.
 
-\noindent The QA Agent with Pagination exhibits slight improvements in recall across datasets, though the gains are smaller than anticipated. We hypothesize that this is due to inherent limitations of the retriever. In particular, Weller et al.  show empirically that multi-vector retrievers such as ColBERTv2 can only represent a restricted set of top-$k$ rankings, limiting the benefit of retrieving beyond the initial candidate set \cite{weller2025theoreticallimitationsembeddingbasedretrieval}.
+\noindent The QA Agent with Pagination shows small improvements in recall across datasets. On 2Wiki, the agent retrieves an average of $12.9$ unique documents per query, compared with $10.4$ for the base agent, but the recall increases by only $1.4$ points, highlighting that retrieving more documents is not necessarily leading to a proportionally higher recall.
 
-\noindent We now compare the strongest QA Agent variant that implements reflection with the QA DAG Agent in Table \ref{tab:retrieval_results_agents}.
+\noindent The QA Agent with Reflection shows no notable changes in retrieval performance compared with the base QA Agent.
+
+\noindent Overall, these simple agents outperform all baselines on HotpotQA, 2Wiki and MuSiQue. On HotpotQA, the QA Agent retrieves an average of $7.9$ unique documents per query and achieves a recall of $85.7$, compared with $85.3$ for the RAG baseline with ColBERTv2 at $k = 20$. On 2Wiki, the QA Agent retrieves an average of $10.4$ unique documents and achieves a recall of $90.3$, representing a $15.8$-point improvement over the RAG baseline using msmarco-bert-base-dot-v5 at $k = 100$. On MuSiQue, the base QA Agent retrieves an average of $10.9$ unique documents per query and achieves a recall of $69.0$, compared with $64.7$ for the RAG baseline with HippoRAG at $k = 20$. In all cases, the base QA Agent achieves higher recall at lower values of $k$.
 
 \input{chapter4/retrieval_results_agents}
+\input{chapter4/retrieval_results_qa_agent_locomo}
 
-\noindent Overall, even the simplest agent, the QA Agent, substantially outperforms all baselines on 2Wiki and MuSiQue. On MuSiQue, the QA Agent retrieves an average of $10.9$ unique documents per query, achieving a recall of $69.0$, compared to $60.6$ for ColBERTv2 at $k = 20$. On 2Wiki, the QA Agent retrieves $10.4$ unique documents on average and achieves a recall of $90.3$, representing a $15.8$ point improvement over msmarco-bert-base-dot-v5 at $k = 100$. In contrast, on LoCoMo, the QA Agent performs slightly worse, even when compared against $R@5$. 
+\noindent We then compare the base QA Agent with the proposed language-agent architectures in Table \ref{tab:retrieval_results_agents}. Both the DAG Agent and Auto DAG Agent show significant retrieval improvements across all MHQA datasets with GPT-4o-mini and GPT-4.1.-mini. Although the Auto DAG Agent with GPT-4o-mini retrieves an average of $13.2$ unique documents, slightly more than the QA Agent with Pagination at $12.9$, the recall gain is $6.5$ points. This improvement highlights that the agents' ability to backtrack, correct errors, and explore alternative paths lead to increased coverage of relevant documents.
 
+\noindent The Cognitive QA Agent also shows slight improvements on 2Wiki and MuSiQue, suggesting that the agent may leverage recurring question patterns or previously retrieved passages to generate more effective queries.
+
+\noindent To assess performance on a different domain with more varied questions, we report results on LoCoMo in Table \ref{tab:retrieval_results_qa_agent_locomo}. On this dataset, the language agents perform slightly below the baseline RAG systems, even when evaluated against $R@5$, highlighting a limitation in generalizing to diverse question types.
 
 \section{Question Answering Results}
 
 \subsection{Baselines}
 
-\noindent Figure \ref{fig:scores_gpt4o} shows the results obtained using GPT-4o-mini across the four datasets using ColBERTV2, msmarco-bert-base-dot-v5, and BM25 retrievers. While performance generally improves with increasing $k$, the gains diminish as more irrelevant details begin to interfere with the model's ability to identify relevant information within its context.
-
-\noindent Interestingly, a performance drop is observed on LoCoMo, HotpotQA, and 2Wiki under the FULL-CONTEXT setup, which suggests that excessive context introduces noise. However, MuSiQue, the most complex dataset, benefits modestly from the added information.
+\noindent Figure \ref{fig:scores_gpt4o} shows the results obtained using GPT-4o-mini across the four datasets with ColBERTV2, msmarco-bert-base-dot-v5, and BM25 retrievers. While performance generally improves with increasing $k$, the gains diminish as more irrelevant details begin to interfere with the model's ability to identify relevant information within its context.
 
 \input{chapter4/scores_gpt4o}
+
+\noindent Interestingly, a performance drop is observed on LoCoMo, HotpotQA, and 2Wiki under the FULL-CONTEXT setup, which suggests that excessive context introduces noise. In contrast, MuSiQue, the most complex dataset, benefits modestly from the added information.
 
 \noindent We also evaluate Qwen2.5-14B using a slightly adapted prompt, see Appendix \ref{fig:qa-base-qwen}.  As shown in Figure \ref{fig:scores_qwen}, its performance closely matches that of GPT-4o-mini, demonstrating that smaller models with strong instruction tuning can achieve competitive results.
 
 \input{chapter4/scores_qwen}
 
-\noindent We also test o3-mini using $k = 5$. As expected, o3-mini matches or outperforms other models with higher $k$ values, suggesting that reasoning ability plays a key role for MHQA task.
-
-\noindent For reference, we include results when only relevant documents are provided to the LLM directly in Table \ref{tab:qa_results_default}, and results when all the corpus is passed to the LLM in Table \ref{tab:qa_results_fullcontext}.
+\noindent Additionally, we test o3-mini using $k = 5$. As expected, o3-mini matches or outperforms other models with higher $k$ values, suggesting that reasoning ability plays a key role for MHQA task.
 
 \input{chapter4/default}
-
 \input{chapter4/full-context}
 
-\noindent Detailed results for baseline configurations that use simple retrieval methods are provided in Table \ref{tab:qa_results}.
+\noindent For reference, we include results when only relevant documents are provided to the LLM directly in Table \ref{tab:qa_results_default}, and results when all the corpus is passed to the LLM in Table \ref{tab:qa_results_fullcontext}. Detailed results for baseline configurations that use simple retrieval methods are provided in Table \ref{tab:qa_results}.
 
 \input{chapter4/qa_results}
 
@@ -71,22 +77,45 @@ We first evaluated the retrieval performance of our baseline systems introduced 
 
 \subsection{Cognitive Language Agents}
 
-\noindent Table \ref{tab:qa_results_agent} reports the QA performance of the agent architectures. Even the simplest variant, the QA Agent, significantly outperforms the baseline methods on HotpotQA, 2Wiki, and MuSiQue. On 2Wiki, the QA agent even surpasses the reference setting, where only supporting passages were provided to the LLM (GPT-4o-mini), by $7.4$ points on $R_1$. On HotpotQA and MuSiQue, the agent lags behind the same reference by only $7.0$ and $9.9$ points, respectively. These results underscore the importance of integrating reasoning components into QA systems, particularly given the recall levels of $85.8$ (HotpotQA) and $69.0$ (MuSiQue) that demonstrate that there is still room for better retrieval systems.
+\noindent Table \ref{tab:qa_results_agent} reports the QA performance of the agent architectures. Even the simplest variant, the QA Agent, significantly outperforms the baseline methods on HotpotQA, 2Wiki, and MuSiQue. On 2Wiki, the QA agent exceeds the performance obtained when only the relevant supporting passages are provided directly to GPT-4o-mini (See Table \ref{tab:qa_results_default}), by $7.4$ points on $R_1$, likely benefiting from its reasoning capabilities. On HotpotQA and MuSiQue, the agent falls short of this reference, with differences of only $7.0$ and $9.9$ points, respectively.
+
+\noindent The QA Agent also surpasses the HippoRAG baseline reference using the same language model (GPT-4o-mini), even on MuSiQue, where HippoRAG demonstrates strong performance. On this benchmark, the QA Agent achieves an $8.2$ point increase in $R_1$. However, when integrating HippoRAG as the retriever for the QA Agent, performance is similar to using ColBERTv2, despite HippoRAG alone performing better. This suggests that the QA Agent iterative retrieval and reasoning capabilities are the primary drivers of its performance, with less dependence on the underlying retriever.
 
 \input{chapter4/qa_results_agents}
 
-\noindent The QA Agent with Re-ranking underperforms relative to other agents. While the second-stage LLM filter improves retrieval precision, the corresponding reduction in recall significantly harms downstream QA performance. This suggests that the agent is highly sensitive to recall but more tolerant of lower precision, performing well at filtering irrelevant observations, but struggling when potentially useful evidence is missing.
+\noindent Some QA Agent variants highlight trade-offs in design. The QA Agent with Re-ranking underperforms relative to other agents. While the second-stage LLM filter improves retrieval precision, the corresponding reduction in recall significantly harms QA performance, indicating that these systems are highly sensitive to recall and more tolerant of lower precision. Similarly, the QA Agent with Pagination, despite retrieving more documents on average, shows only minor performance improvements across the three datasets. In contrast, the QA Agent with Reflection achieves slight gains, specially on MuSiQue, suggesting that self-reflection mechanisms can positively impact performance, even if slightly.
 
-\noindent The Cognitive QA Agent, which incorporates an episodic memory, shows pronounced gains on MuSiQue. This dataset contains recurring question patterns and supporting evidence, enabling the agent to leverage prior experience and progressively improve over time, even when questions are presented in randomized order. Figure \ref{fig:cog_agent_learn} illustrates this effect, showing cumulative average $R_1$ performance steadily increasing with the number of questions processed.
+\noindent Both the DAG Agent and Auto DAG Agent, which follow similar paradigms, show consistent improvements across all three benchmarks, aligning with their enhanced retrieval performance. For example, on MuSiQue, the Auto DAG Agent with GPT-4o-mini achieves an EM of $37.9$ and $R_1$ of $48.1$, slightly exceeding the best QA Agent variant (QA Agent with Reflection). The architecture's ability to explore alternative paths, backtrack, and correct errors contributes directly to these gains. These architectures can use multiple LLMs, assigning a stronger, but expensive, model to planning and synthesis, while a smaller, more efficient model handles execution, which consumes most of the tokens. For instance, using GPT-4.1-mini for planning and synthesis, and GPT-4o-mini for execution, leads to further improvements where the Auto DAG Agent achieves gains of $0.9$, $1.8$, $1.8$, and $3.0$ on HotpotQA, and $1.0$, $2.6$, $3.1$, and $4.0$ points on MuSiQue for EM, $R_1$, $R_2$, and $L_1$, respectively, compared with the QA Agent with Reflection. Overall, the Auto DAG Agent demonstrates the strongest performance, followed closely by the DAG Agent and the QA Agent with Reflection.
 
-\begin{figure}[h]
+\noindent We also report results for the base QA Agent using GPT-4.1-mini. This model struggled to execute function calls reliably and required more iterations for correct execution. It also shows difficulty providing concrete answers that quote retrieved passages directly, reflected in low $EM$ scores. However, it demonstrated excellent performance on $L_1$, indicating that predicted answers are semantically correct. The higher computational cost of GPT-4.1-mini also makes it less practical for broader use.
+
+\begin{figure}[!b]
     \centering
     \includegraphics[width=.8\textwidth]{images/musique_cognitive_agent.eps}
     \caption{Cognitive QA Agent Learning on MuSiQue using $R_1$ cumulative average.}
     \label{fig:cog_agent_learn}
 \end{figure}
 
-\noindent To assess generalization, we further compare the QA Agent and the Cognitive QA Agent on samples not included in the original evaluation sets. For each dataset, we evaluate on 1000 additional questions. During this evaluation, the cognitive agent's memory is frozen, preventing the addition of new traces and forcing the model to rely exclusively on prior learning. Results, in Table \ref{tab:qa_results_agent_v2}, show no significant improvement compared to the baseline QA Agent, suggesting that while the cognitive architecture does not generalize well, it does maintain stable performance.
+\noindent The Cognitive QA Agent, which incorporates episodic memory, shows pronounced gains on MuSiQue, and more moderate gains on 2Wiki. MuSiQue contains recurring question patterns and supporting evidence, enabling the agent to leverage prior experience and progressively improve over time, even with questions presented in randomized order. Figure \ref{fig:cog_agent_learn} illustrates cumulative average $R_1$ performance steadily increasing as more questions are processed. Similarly, 2Wiki contains structurally recurring questions. For example, questions such as \textit{Who is the maternal grandmother of Prince Andrew Of Greece And Denmark?}, and \textit{Who is the maternal grandmother of Archduchess Elisabeth Of Austria} follow the same pattern. Once the agent identifies how to answer such questions, it can apply similar rationale plans to new, similar questions. Recurring questions with overlapping evidence also allow previously extracted supporting information to be reused from episodic memory, facilitating more accurate responses.
+
+\noindent To assess generalization, we evaluated the QA Agent and Cognitive QA Agent 1,000 additional questions not included in the original evaluation sets. During this evaluation, the cognitive agents' memory was frozen, forcing reliance on previos learning. Results, in Table \ref{tab:qa_results_agent_v2}, show no significant improvement over the baseline QA Agent, showing that this architecture only provides additional value under certain circumstances.
+
+\noindent We also evaluate the agents on LoCoMo. Results in Table \ref{tab:qa_results_agent_locomo}, indicate that the language-agent architectures struggle to generalize to these questions. For example, the QA Agent achieves $R_1 = 47.5$, while the RAG baseline with $k = 5$ achieves $R_1 = 51.6$ score of $51.6$, despite both using GPT-4o-mini and few-shot prompting. DAG Agent performance is similarly affected and can be counterproductive in some cases. Consider the question \textit{What is Caroline's identity?}, the RAG baseline retrieves the relevant conversation directly: 
+
+\begin{quote}
+\begin{description}[leftmargin=2em, labelwidth=3em, labelsep=0.5em, style=unboxed, font=\itshape]
+    \item[Caroline:] I went to a LGBTQ support group yesterday and it was so powerful. The room was full of amazing stories and encouragement.
+    \item[Melanie:] Wow, that's cool, Caroline! I'm so glad you found it.
+    \item[Caroline:] The transgender stories were so inspiring! I was so happy and thankful for all the support I received there.
+    \item[Melanie:] ... so cool you found such a helpful group ...
+    \item[Caroline:] The support group has made me feel accepted and given me courage to embrace myself.
+\end{description}
+\end{quote}
 
 \input{chapter4/qa_results_agents_cognitive}
+
+\noindent From this context, it is easy to infer Caroline's identity. The DAG plan, however, begins without context and generates questions based on assumptions, such as 
+\textit{What is Caroline's age?} or \textit{What is Caroline's full age?}. These questions introduce bias into the reasoning process and can lead to verbose, irrelevant, or incorrect answers, demonstrating a limitation of the planning-based approach for non-compositional questions.
+
+\input{chapter4/qa_results_agents_locomo}
 

@@ -1,13 +1,14 @@
-% GPT-4o-mini
+% ===== Data =====
+% ColBERTV2 (k=100)
 \pgfplotstableread[row sep=\\,col sep=&]{
 dataset & input & output \\
-LoCoMo    & 916359 & 11168 \\
-HotpotQA  & 5406415 & 30227 \\
-2Wiki     & 10045983 & 49262 \\
-MuSiQue   & 1863317 & 9072 \\
+LoCoMo    & 9491602 & 12756 \\
+HotpotQA  & 98203664 & 34680 \\
+2Wiki     & 173622051 & 55316 \\
+MuSiQue   & 30743225 & 10912 \\
 }\zsdata
 
-% o3-mini
+% QA Agent
 \pgfplotstableread[row sep=\\,col sep=&]{
 dataset & input & output \\
 LoCoMo    & 914837 & 786736 \\
@@ -16,15 +17,25 @@ HotpotQA  & 5399024 & 4041931 \\
 MuSiQue   & 1860903 & 3282503 \\
 }\cbdata
 
-% QWen14B
+% Auto DAG Agent
 \pgfplotstableread[row sep=\\,col sep=&]{
 dataset & input & output \\
-LoCoMo    & 979666 & 11204 \\
-HotpotQA  & 9358497 & 35014 \\
-2Wiki     & 16909346 & 58019 \\
-MuSiQue   & 3220550 & 9451 \\
+LoCoMo    & 25991129 & 1052529 \\
+HotpotQA  & 175128399 & 6775930 \\
+2Wiki     & 337343379 & 11912993 \\
+MuSiQue   & 84899504 & 2828011 \\
 }\hrdata
 
+% Cognitive Agent
+\pgfplotstableread[row sep=\\,col sep=&]{
+dataset & input & output \\
+LoCoMo    & 8199579 & 352909 \\
+HotpotQA  & 97289117 & 1876576 \\
+2Wiki     & 333623487 & 3722927 \\
+MuSiQue   & 67000951 & 955168 \\
+}\caData
+
+% ===== Plot style =====
 \pgfplotsset{
   qacoststyle/.style={
     ybar stacked,
@@ -46,82 +57,83 @@ MuSiQue   & 3220550 & 9451 \\
       rotate=90,
       anchor=west,
     },
-    ymin=0, ymax=25000000,
+    ymin=0, ymax=400000000,
     ylabel={Total $token$ consumption},
   }
 }
 
+% ===== Figure =====
 \begin{figure}[ht]
     \centering
     \begin{tikzpicture}
     
+    % ColBERTV2
     \begin{axis}[
         qacoststyle,
         hide axis,
-        every node near coord/.append style={
-            yshift=0.25cm,
-        }
+        every node near coord/.append style={yshift=0.75cm}
     ]
-    % ZS Input (Stacked)
     \addplot+[
         nodes near coords=,
-        bar shift=-0.25cm,
+        bar shift=-0.75cm,
         fill={rgb,255:red,130; green,130; blue,180}, draw=none,
     ] table[x=dataset, y=input]{\zsdata};
-    
-    % ZS Output (Stacked)
     \addplot+[
-        bar shift=-0.25cm,
+        bar shift=-0.75cm,
         fill={rgb,255:red,170; green,170; blue,210}, draw=none,
     ] table[x=dataset, y=output]{\zsdata};
-
     \end{axis}
 
+    % QA Agent
     \begin{axis}[
         qacoststyle,
-        every node near coord/.append style={
-            yshift=-0.25cm,
-        }
+        every node near coord/.append style={yshift=0.25cm}
     ]
-    
-    % CB Input (Grouped)
     \addplot+[
         nodes near coords=,
-        bar shift=0.25cm,
+        bar shift=-0.25cm,
         fill={rgb,255:red,100; green,190; blue,130}, draw=none,
     ] table[x=dataset, y=input]{\cbdata};
-    
-    % CB Output (Grouped)
     \addplot+[
-        bar shift=0.25cm,
+        bar shift=-0.25cm,
         fill={rgb,255:red,160; green,210; blue,150}, draw=none,
     ] table[x=dataset, y=output]{\cbdata};
-
     \end{axis}
 
+    % Auto DAG Agent
     \begin{axis}[
         qacoststyle,
-        every node near coord/.append style={
-            yshift=-0.75cm,
-        }
+        every node near coord/.append style={yshift=-0.25cm}
     ]
-    
-    % HR Input (Grouped)
+    \addplot+[
+        nodes near coords=,
+        bar shift=0.25cm,
+        fill={rgb,255:red,230; green,140; blue,70}, draw=none,
+    ] table[x=dataset, y=input]{\hrdata};
+    \addplot+[
+        bar shift=0.25cm,
+        fill={rgb,255:red,250; green,170; blue,100}, draw=none,
+    ] table[x=dataset, y=output]{\hrdata};
+    \end{axis}
+
+    % Cognitive Agent
+    \begin{axis}[
+        qacoststyle,
+        every node near coord/.append style={yshift=-0.75cm}
+    ]
     \addplot+[
         nodes near coords=,
         bar shift=0.75cm,
-        fill={rgb,255:red,230; green,140; blue,70}, draw=none,
-    ] table[x=dataset, y=input]{\hrdata};
-    
-    % HR Output (Grouped)
+        fill={rgb,255:red,180; green,90; blue,200}, draw=none,
+    ] table[x=dataset, y=input]{\caData};
     \addplot+[
         bar shift=0.75cm,
-        fill={rgb,255:red,250; green,170; blue,100}, draw=none,
-    ] table[x=dataset, y=output]{\hrdata};
-
+        fill={rgb,255:red,210; green,130; blue,230}, draw=none,
+    ] table[x=dataset, y=output]{\caData};
     \end{axis}
 
-    \node[anchor=south, yshift=-1.25em] at (current axis.north) {
+    % ===== Legend =====
+    \node[anchor=south, yshift=1.75em] at (current axis.north) {
         \begin{tikzpicture}[baseline]
             \node[
                 fill=white,
@@ -130,10 +142,11 @@ MuSiQue   & 3220550 & 9451 \\
                 inner sep=4pt
             ] {
                 \shortstack{
-                    \begin{tabular}{@{}c@{\hskip 0.5em}c@{\hskip 1.5em}c@{\hskip 0.5em}c@{\hskip 1.5em}c@{\hskip 0.5em}c@{}}
-                        \tikz \draw[fill={rgb,255:red,130; green,130; blue,180}, draw=none] (0,0) rectangle (0.4cm,0.2cm); & \scriptsize GPT-4o-mini &
-                        \tikz \draw[fill={rgb,255:red,100; green,190; blue,130}, draw=none] (0,0) rectangle (0.4cm,0.2cm); & \scriptsize o3-mini &
-                        \tikz \draw[fill={rgb,255:red,230; green,140; blue,70}, draw=none] (0,0) rectangle (0.4cm,0.2cm); & \scriptsize QWen2.5-14B \\
+                    \begin{tabular}{@{}c@{\hskip 0.5em}c@{\hskip 1.5em}c@{\hskip 0.5em}c@{\hskip 1.5em}c@{\hskip 0.5em}c@{\hskip 1.5em}c@{\hskip 0.5em}c@{}}
+                        \tikz \draw[fill={rgb,255:red,130; green,130; blue,180}, draw=none] (0,0) rectangle (0.4cm,0.2cm); & \scriptsize ColBERTV2 (k=100) &
+                        \tikz \draw[fill={rgb,255:red,100; green,190; blue,130}, draw=none] (0,0) rectangle (0.4cm,0.2cm); & \scriptsize QA Agent &
+                        \tikz \draw[fill={rgb,255:red,230; green,140; blue,70}, draw=none] (0,0) rectangle (0.4cm,0.2cm); & \scriptsize Auto DAG Agent &
+                        \tikz \draw[fill={rgb,255:red,180; green,90; blue,200}, draw=none] (0,0) rectangle (0.4cm,0.2cm); & \scriptsize Cognitive QA Agent \\
                     \end{tabular}
                     \\
                     {\tiny \textit{Darker shades correspond to input tokens, while lighter shades to output tokens}}
@@ -141,8 +154,11 @@ MuSiQue   & 3220550 & 9451 \\
             };
         \end{tikzpicture}
     };
-    
+
     \end{tikzpicture}
-    \caption{Total $Token$ usage between GPT-4o-mini, o3-mini, and QWen2.5-14B using ColBERTV2 retriever with $k=5$ on QA datasets.}
+    \caption{Total $token$ usage between ColBERTV2 (k=100), QA Agent, Auto DAG Agent, and Cognitive QA Agent with GPT-4o-mini on QA datasets.}
     \label{fig:qa_token_prompt_tech}
 \end{figure}
+
+
+

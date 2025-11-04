@@ -1,6 +1,14 @@
 \cleardoublepage
-\chapter{Conclusion and future work}
-\label{ch:conclusion}
+\chapter{Discussion}
+\label{ch:discussion}
 \label{ch:chapter5}
 
-We conducted a systematic evaluation of different language agent architectures, and demonstrated how these systems excel at QA tasks.
+In this section, we provide further insights into the trade-offs of language-agent architectures.
+
+\input{chapter5/cost/qa_cost_prompt_tech}
+
+\noindent To better understand the computational costs associated with the different agent architectures, we analyze total token consumption, separating input and output tokens. Figure \ref{fig:qa_token_prompt_tech} and \ref{fig:qa_avg_token_prompt_tech} show a comparison across the RAG baseline with ColBERTv2 and $k=100$, the QA Agent, Auto DAG Agent, and the Cognitive QA Agent, for all four QA datasets. This visualization highlights how the more sophisticated language-agent architectures, particularly those with cognitive features, consume additional tokens relative to simpler baselines. Overall, the simpler QA Agent demonstrates the best trade-off between accuracy and cost as it consumes considerably fewer tokens than one of the strongest RAG baseline ColBERTv2 with $k = 100$, while achieving competitive results with the strongest language-agent architectures such as Auto DAG Agent. The increased token usage of the Auto DAG Agent is explained by the fact that it includes increasing amounts of data within its working memory as it processes more questions. The procedural memory also takes up significantly space to encode the rules for all internal actions to update its episodic memory including few-shot examples. Similarly, Cognitive QA Agent also consumes vast amount of tokens specially on 2Wiki and MuSiQue where it demonstrated strong performance. In this case, the agent is also bringing into working memory larger amount of examples drawn from its long-term memory, and we empirically found that in these two datasets there were more semantically similar questions the agent was using for learning.
+
+\input{chapter5/cost/qa_avg_cost_prompt_tech}
+
+\noindent These results highlight a major challenge for language-agent architectures for QA adoption as it needs to become more accessible and scalable. The increased token usage also represents a higher latency for real-world applications.

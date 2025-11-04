@@ -1,0 +1,36 @@
+\begin{table}[ht]
+    \centering
+        \setlength{\tabcolsep}{3pt}
+        \begin{tabular}{lcccc}
+            \toprule
+            \multicolumn{5}{c}{\textbf{LoCoMo}} \\
+            \midrule
+             & EM & $R_1$ & $R_2$ & $L_1$ \\
+            \midrule
+            \multicolumn{5}{c}{\textbf{QA Agent}} \\
+            \midrule
+            ColBERTv2/GPT-4o-mini & 23.3 & 47.5 & 25.2 & 43.0 \\
+            ColBERTv2/GPT-4.1-mini & 17.2 & 41.2 & 21.6 & 53.0 \\
+            Re-ranking (GPT-4o-mini) & 23.7 & 47.4 & 24.9 & 43.0 \\
+            Pagination (GPT-4o-mini) & 24.3 & 48.8 & 25.9 & 44.0 \\
+            Reflection (GPT-4o-mini) & 23.0 & 46.7 & 24.6 & 41.0 \\
+            \midrule
+            \multicolumn{5}{c}{\textbf{DAG Agent}} \\
+            \midrule
+            GPT-4o-mini & 18.8 & 41.4 & 20.2 & 37.0 \\
+            GPT-4.1-mini & - & - & - & - \\
+            \midrule
+            \multicolumn{5}{c}{\textbf{Auto DAG Agent}} \\
+            \midrule
+            GPT-4o-mini & 18.4 & 39.1 & 20.0 & - \\
+            GPT-4.1-mini & - & - & - & - \\
+            \midrule
+            \multicolumn{5}{c}{\textbf{Cognitive QA Agent}} \\
+            \midrule
+            GPT-4o-mini & 24.4 & 48.4 & 26.2 & 45.0 \\
+            \bottomrule
+        \end{tabular}
+        
+    \caption{Agents Question Answering performance on LoCoMo.}
+    \label{tab:qa_results_agent_locomo}
+\end{table}

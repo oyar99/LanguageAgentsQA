@@ -1,0 +1,36 @@
+\begin{table}[!b]
+    \centering
+    \adjustbox{max width=\textwidth}{
+        \begin{tabular}{lccc}
+            \toprule
+            \multicolumn{4}{c}{\textbf{LoCoMo}} \\
+            \midrule
+             & R & P & $F_1$ \\
+            \midrule
+            \multicolumn{4}{c}{\textit{QA Agent}} \\
+            \midrule
+            \scriptsize ColBERTv2/GPT-4o-mini & 62.1 & 15.4 & 23.7 \\
+            \scriptsize ColBERTv2/GPT-4.1-mini & 62.7 & 15.5 & 23.9 \\
+            \scriptsize Re-ranking (GPT-4o-mini) & 60.7 & 28.4 & 35.4 \\
+            \scriptsize Pagination (GPT-4o-mini) & 63.6 & 15.2 & 23.5 \\
+            \scriptsize Reflection (GPT-4o-mini) & 60.8 & 15.2 & 23.4 \\
+            \midrule
+            \multicolumn{4}{c}{\textit{DAG Agent}} \\
+            \midrule
+            \scriptsize GPT-4o-mini & 62.2 & 12.0 & 19.2 \\
+            \scriptsize GPT-4.1-mini & - & - & - \\
+            \midrule
+            \multicolumn{4}{c}{\textit{Auto DAG Agent}} \\
+            \midrule
+            \scriptsize GPT-4o-mini & 61.2 & 11.7 & 18.8 \\
+            \scriptsize GPT-4.1-mini & - & - & - \\
+            \midrule
+            \multicolumn{4}{c}{\textit{Cognitive QA Agent}} \\
+            \midrule
+            \scriptsize GPT-4o-mini & 62.6 & 15.6 & 24.0 \\
+            \bottomrule
+        \end{tabular}
+    }
+    \caption{QA Agent retrieval performance on LoCoMo.}
+    \label{tab:retrieval_results_qa_agent_locomo}
+\end{table}

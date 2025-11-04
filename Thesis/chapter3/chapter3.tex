@@ -39,7 +39,7 @@ We developed an evaluation framework in Python 3.13, publicly available at \href
 
 \noindent Furthermore, the framework supports multiprocessing, enabling independent processing of questions. In our experiments, we usually leverage up to 40 CPUs, substantially reducing execution time.
 
-\noindent Finally, the framework integrates with vLLM, an inference and serving engine for LLMs. Any generative model available in vLLM can be used through the same interface as OpenAI's chat completions endpoint \cite{kwon2023efficient}.
+\noindent Finally, the framework integrates with vLLM, an inference and serving engine for LLMs. Any generative model available in vLLM can be used through the same interface as OpenAI's chat completions endpoint for further research \cite{kwon2023efficient}.
 
 \section{Baselines}
 \label{baselines_sec}
@@ -83,7 +83,7 @@ Building on the evaluation framework, we design several language agent architect
 
 \noindent A \textbf{ReAct} agent uses a language model $M$ to reason and interact with the environment, where a single single action is defined to retrieve relevant passages using a retriever $R$. Once sufficient context is gathered, the agent produces an answer. The agent uses 2-shot prompting to guide its reasoning and acting. The architecture is shown in Figure \ref{fig:qa_agent}.
 
-\noindent In our experiments, we test with language model $M$, GPT-4o-mini, and retrievers $R$: ColBERTv2 and HippoRAG both retrieving 5 documents per query.
+\noindent In our experiments, we test with language model $M$, GPT-4o-mini, and retrievers $R$, ColBERTv2 and HippoRAG both retrieving 5 documents per query.
 
 \noindent We implement minor variants to experiment introduced below.
 
@@ -148,7 +148,7 @@ Building on the evaluation framework, we design several language agent architect
     The Bet is a 1992 American short film directed by Ted Demme, written by Gavin O'Connor, and starring Josh Mosby and John B. Hickey.
 \end{quote}
 
-\noindent Here, the agent may incorrectly assume that the question refers to \textit{Anton Checkhov's} 1889 short story \textit{The Bet}, since this story is more widely known and likely appears more frequently in the training data. This initial bias can prevent consideration of alternative interpretations. Our backtracking procedure enables the agent to revisit this assumption, recognize that the necessary information about Chekhov is absent, and instead recover the intended answer by shifting to the 1992 film context.
+\noindent However, the agent may incorrectly assume that the question refers to \textit{Anton Checkhov's} 1889 short story \textit{The Bet}, since this story is more widely known and likely appears more frequently in the training data. This initial bias can prevent consideration of alternative interpretations. Our backtracking procedure enables the agent to revisit this assumption, recognize that the necessary information about Chekhov is absent, and instead recover the intended answer by shifting to the 1992 film context.
 
 \noindent In our experiments we use GPT-4o-mini and GPT-4.1-mini as the language model $M$. The function $A(q)$ is implemented using the QA Agent introduced in Section \ref{sec:qa_agent}, with ColBERTv2 as the retriever and GPT-4o-mini as the language model. This architecture furthers allows decoupling reasoning and execution, where larger models can be used for generating the DAG or synthesizing answers, while smaller models handle sub-question solving, a flexibility not easily achieved with ReAct-style agents.
 
@@ -161,7 +161,7 @@ We also explore an alternative implementation of the execution loop in Algorithm
     \item[] $update\_node(value: str, node\_id: str)$: updates the answer of the specified node, resetting all descendant nodes if they were previously completed. This tool also returns feedback recommending the next steps.
 \end{itemize}
 
-\noindent With these tools, the agent learns to both advance through the DAG and backtrack when necessary. This allows it to reflect on prior decisions, recover from failures, and maintain coherence through verbal reinforcement learning.
+\noindent Within the context of the \textit{Cognitive Language Agent} framework, these tools correspond to the agents' internal actions, and the graph $G$ represents its episodic memory. For example, when the agent executes the $answer$ action, it performs an iterative search and updates the graph $G$ state by either attaching the results to the executed node or marking the node as failed if no answer is found. Similarly, the $update\_node$ action directly modifies the graph $G$ state. By using these tools, the agent learns to advance through the plan while backtracking when necessary, enabling it to reflect on prior decisions, recover from failures, and maintain coherence through verbal reinforcement learning.
 
 \noindent Note that in later sections, we refer to this variant as the \textit{Auto DAG Agent}.
 

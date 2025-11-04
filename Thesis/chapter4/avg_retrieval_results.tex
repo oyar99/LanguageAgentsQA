@@ -6,15 +6,15 @@
             \cmidrule(lr){2-6}
              K & \small 2 & \small 5 & \small 10 & \small 20 & \small 100 \\
             \midrule
-            \small BM25 & 41.8 & 53.0 & 60.7 & 66.7 & 76.8 \\
+            \small BM25 & 41.8 & 53.0 & 60.8 & 66.8 & 76.2 \\
             \small msmarco-bert &
-\underline{47.4} & \underline{57.7} & \underline{63.7} & \underline{68.9} & \underline{79.4} \\
-            \small ColBERTv2 & \textbf{51.3} & \textbf{62.4} & \textbf{68.4} & \textbf{73.3} & \textbf{81.7} \\
+49.0 & 58.7 & 64.2 & 68.6 & 77.2 \\
+            \small ColBERTv2 & \textbf{50.2} & \underline{61.0} & \underline{66.7} & \underline{71.0} & \underline{79.0} \\
             \midrule
             \small HippoRAG (Qwen2.5-14B) & 42.7 & 54.1 & 61.0 & 66.5 & 76.5 \\
-            \small HippoRAG (GPT-4o-mini) & - & - & - & - & - \\
+            \small HippoRAG (GPT-4o-mini) &  \underline{49.3} & \textbf{61.1} & \textbf{67.5} & \textbf{72.5} & \textbf{81.1} \\
             \bottomrule
         \end{tabular}
-    \caption{\small Average baselines retrieval performance.}
+    \caption{Average baselines retrieval performance on MHQA datasets (HotpotQA, 2Wiki, MuSiQue).}
     \label{tab:avg_retrieval_results}
 \end{table}

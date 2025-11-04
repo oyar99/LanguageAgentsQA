@@ -1,18 +1,18 @@
 \begin{table}[ht]
     \centering
     \adjustbox{max width=\textwidth}{
-        \begin{tabular}{lccccccccccccccccccccc}
+        \begin{tabular}{lcccccccccccccccccc}
             \toprule
-            & \multicolumn{3}{c}{\textbf{LoCoMo}} & \multicolumn{3}{c}{\textbf{HotpotQA}} & \multicolumn{3}{c}{\textbf{2Wiki}} & \multicolumn{3}{c}{\textbf{MuSiQue}} & \multicolumn{3}{c}{ \textbf{Average}} \\
-            \cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10} \cmidrule(lr){11-13} \cmidrule(lr){14-16}
-             & R & P & $F_1$ & R & P & $F_1$ & R & P & $F_1$ & R & P & $F_1$ & R & P & $F_1$ \\
+             & \multicolumn{3}{c}{\textbf{HotpotQA}} & \multicolumn{3}{c}{\textbf{2Wiki}} & \multicolumn{3}{c}{\textbf{MuSiQue}} & \multicolumn{3}{c}{ \textbf{Average}} \\
+            \cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10} \cmidrule(lr){11-13}
+             & R & P & $F_1$ & R & P & $F_1$ & R & P & $F_1$ & R & P & $F_1$ \\
             \midrule
-            \scriptsize QA Agent - Re-ranking & 60.7 & 28.4 & 35.4 & 82.3 & 61.3 & 65.2 & 87.5 & 73.6 & 76.9 & 62.8 & 49.2 & 51.0 & 73.3 & 53.1 & 57.1 \\
-            \scriptsize QA Agent - Pagination & 63.6 & 15.2 & 23.5 & 86.1 & 23.2 & 35.6 & 91.7 & 20.2 & 32.4 & 69.0 & 16.5 & 25.9 & 77.6 & 18.8 & 29.4 \\
-            \scriptsize QA Agent - Reflection & 60.8 & 15.2 & 23.4 & - & - & - & - & - & - & 68.6 & 18.0 & 27.9 & - & - & - \\
+            \scriptsize Re-ranking & 82.3 & 61.3 & 65.2 & 87.5 & 73.6 & 76.9 & 62.8 & 49.2 & 51.0 & 77.5 & 61.4 & 64.4 \\
+            \scriptsize Pagination & 86.1 & 23.2 & 35.6 & 91.7 & 20.2 & 32.4 & 69.0 & 16.5 & 25.9 & 82.3 & 18.8 & 31.3 \\
+            \scriptsize Reflection & 85.1 & 24.1 & 36.8 & 89.5 & 21.8 & 34.5 & 68.6 & 18.0 & 27.9 & 81.1 & 21.3 & 33.1 \\
             \bottomrule
         \end{tabular}
     }
-    \caption{QA Agent Variants Retrieval performance with ColBERTv2.}
+    \caption{QA Agent variants retrieval performance with ColBERTv2 and GPT-4o-mini on MHQA datasets.}
     \label{tab:retrieval_results_qa_variants}
 \end{table}

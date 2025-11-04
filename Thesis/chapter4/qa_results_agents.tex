@@ -2,26 +2,37 @@
     \centering
         \setlength{\tabcolsep}{3pt}
         \resizebox{\textwidth}{!}{
-        \begin{tabular}{lcccccccccccccccccccc}
+        \begin{tabular}{lcccccccccccccccc}
             \toprule
-            & \multicolumn{4}{c}{\textbf{LoCoMo}} & \multicolumn{4}{c}{\textbf{HotpotQA}} & \multicolumn{4}{c}{\textbf{2Wiki}} & \multicolumn{4}{c}{\textbf{MuSiQue}} & \multicolumn{4}{c}{\textbf{Average}} \\
-            \cmidrule(lr){2-5} \cmidrule(lr){6-9} \cmidrule(lr){10-13} \cmidrule(lr){14-17} \cmidrule(lr){18-21}
-             & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ \\
+            & \multicolumn{4}{c}{\textbf{HotpotQA}} & \multicolumn{4}{c}{\textbf{2Wiki}} & \multicolumn{4}{c}{\textbf{MuSiQue}} & \multicolumn{4}{c}{\textbf{Average}} \\
+            \cmidrule(lr){2-5} \cmidrule(lr){6-9} \cmidrule(lr){10-13} \cmidrule(lr){14-17}
+             & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ & EM & $R_1$ & $R_2$ & $L_1$ \\
             \midrule
-            DAG Agent (GPT-4o-mini) & - & - & - & - & 55.8 & 70.2 & 39.3 & - & - & - & - & - & 35.6 & 47.6 & 32.2 & - & - & - & - & - \\
-            Auto DAG Agent (GPT-4o-mini) & - & - & - & - & - & - & - & - & - & - & - & - & 37.9 & 48.1 & 33.2 & - & - & - & - & - \\
-            DAG Agent (GPT-4.1-mini) & - & - & - & - & 57.2 & 72.2 & 40.4 & - & - & - & - & - & 37.2 & 49.4 & 33.9 & - & - & - & - & - \\
-            Auto DAG Agent (GPT-4.1-mini) & - & - & - & - & - & - & - & - & - & - & - & - & 37.9 & 49.6 & 34.2 & - & - & - & - & - \\
-            QA Agent (ColBERTv2) & 23.3 & 47.5 & 25.2 & 43.0 & 56.0 & 70.2 & 38.5 & 71.0 & 63.4 & 71.6 & 48.8 & 70.0 & 34.5 & 44.9 & 29.4 & 42.0 & 44.3 & 58.6 & 35.5 & 56.5 \\
-            QA Agent (ColBERTv2/GPT-4.1-mini) & - & - & - & - & - & - & - & - & - & - & - & - & 34.0 & 47.1 & 33.2 & - & - & - & - & - \\
-            QA Agent (HippoRAG) & - & - & - & - & 55.6 & 69.3 & 38.1 & - & - & - & - & - & 35.1 & 45.6 & 30.3 & - & - & - & - & - \\
-            QA Agent - Re-ranking & 23.7 & 47.4 & 24.9 & 43.0 & 56.0 & 70.0 & 38.5 & 71.0 & 62.7 & 71.0 & 48.7 & 70.0 & 34.2 & 43.5 & 28.9 & 40.0 & 44.2 & 58.0 & 35.3 & 56.0 \\
-            QA Agent - Pagination & 24.3 & 48.8 & 25.9 & 44.0 & 55.6 & 69.3 & 38.2 & 70.0 & 62.0 & 69.8 & 47.8 & 69.0 & 33.5 & 43.0 & 28.5 & 40.0 & 43.9 & 57.7 & 35.1 & 55.8 \\
-            QA Agent - Reflection & 23.0 & 46.7 & 24.6 & - & 56.3 & 70.5 & 38.7 & - & - & - & - & - & 36.9 & 47.2 & 31.1 & - & - & - & - & - \\
-            Cognitive QA Agent & 24.4 & 48.4 & 26.2 & 45.0 & 55.5 & 69.9 & 38.0 & 70.0 & - & - & - & - & 57.9 & 66.1 & 46.7 & 62.0 & - & - & - & - \\
+            \multicolumn{17}{c}{\textbf{QA Agent}} \\
+            \midrule
+            ColBERTv2/GPT-4o-mini & 56.0 & 70.2 & 38.5 & 71.0 & 63.4 & 71.6 & 48.8 & 70.0 & 34.5 & 44.9 & 29.4 & 42.0 & 51.3 & 62.2 & 38.9 & 61.0 \\
+            ColBERTv2/GPT-4.1-mini & 52.6 & 69.1 & 39.7 & \textbf{76.0} & 64.2 & 74.4 & 51.8 & 76.0 & 34.0 & 47.1 & 33.2 & \underline{51.0} & 50.3 & 63.5 & 41.6 & 67.7 \\
+            HippoRAG/GPT-4o-mini & 55.6 & 69.3 & 38.1 & 70.0 & 61.9 & 69.9 & 47.7 & 68.0 & 35.1 & 45.6 & 30.3 & 42.0 & 50.9 & 61.6 & 38.7 & 60.0 \\
+            Re-ranking (GPT-4o-mini) & 56.0 & 70.0 & 38.5 & 71.0 & 62.7 & 71.0 & 48.7 & 70.0 & 34.2 & 43.5 & 28.9 & 40.0 & 51.0 & 61.5 & 38.7 & 60.3 \\
+            Pagination (GPT-4o-mini) & 55.6 & 69.3 & 38.2 & 70.0 & 62.0 & 69.8 & 47.8 & 69.0 & 33.5 & 43.0 & 28.5 & 40.0 & 50.4 & 60.7 & 38.2 & 59.7 \\
+            Reflection (GPT-4o-mini) & \underline{56.3} & 70.5 & 38.7 & 71.0 & 64.3 & 72.5 & 49.2 & 71.0 & 36.9 & 47.2 & 31.1 & 43.0 & 52.5 & 63.4 & 39.7 & 61.7 \\
+            \midrule
+            \multicolumn{17}{c}{\textbf{DAG Agent}} \\
+            \midrule
+            GPT-4o-mini & 55.8 & 70.2 & 39.3 & 71.0 & 64.0 & 72.7 & 49.1 & 71.0 & 35.6 & 47.6 & 32.2 & 43.0 & 51.8 & 63.5 & 40.2 & 61.7 \\
+            GPT-4.1-mini & \textbf{57.2} & \underline{72.2} & \underline{40.4} & 73.0 & 68.3 & 77.1 & 52.6 & 75.0 & 37.2 & 49.4 & 33.9 & 46.0 & 54.2 & 66.2 & 42.3 & 64.7 \\
+            \midrule
+            \multicolumn{17}{c}{\textbf{Auto DAG Agent}} \\
+            \midrule
+            GPT-4o-mini & 55.0 & 69.1 & 38.4 & 70.0 & 60.7 & 69.5 & 46.3 & - & \underline{37.9} & 48.1 & 33.2 & 44.0 & - & - & - & - \\
+            GPT-4.1-mini & \textbf{57.2} & \textbf{72.3} & \textbf{40.5} & \underline{74.0} & - & - & - & - & \underline{37.9} & \underline{49.6} & \underline{34.2} & 47.0 & - & - & - & - \\
+            \midrule
+            \multicolumn{17}{c}{\textbf{Cognitive QA Agent}} \\
+            \midrule
+            GPT-4o-mini & 55.5 & 69.9 & 38.0 & 70.0 & 68.0 & 75.7 & 51.7 & 74.0 & \textbf{57.9} & \textbf{66.1} & \textbf{46.7} & \textbf{62.0} & 60.5 & 70.6 & 45.5 & 68.7 \\
             \bottomrule
         \end{tabular}
         }
-    \caption{\small Agents Question Answering performance.}
+    \caption{Agents Question Answering performance on MHQA datasets.}
     \label{tab:qa_results_agent}
 \end{table}
