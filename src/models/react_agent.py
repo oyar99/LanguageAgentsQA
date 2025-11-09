@@ -471,7 +471,7 @@ class IntelligentAgent(BaseIntelligentAgent, MultiprocessingSearchAgent, ABC):
         actions: Dict[str, Action],
         examples: str,
         args,
-        cores=16,
+        cores=32,
         custom_prompt: Optional[str] = None
     ):
         MultiprocessingSearchAgent.__init__(self, args, cores)

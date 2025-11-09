@@ -160,16 +160,16 @@ class BaseDAGAgentV2(BaseDag, ABC):
         actions = {
             "answer": Action(
                 "Answers a sub-question. This tool takes a query string "
-                "that should explicitly contain all entities and keywords needed to "
-                "answer the query and must **NOT** contain any node IDs or references to other nodes. "
-                "The query must be self-contained and cannot reference other nodes or dependencies. "
+                "that should **explicitly** contain all entities and keywords needed to "
+                "answer the query. The query must **NOT** contain any node IDs such as node_1, node_2, under "
+                " any circumstances. Instead, replace node references with actual values from completed nodes. "
                 "The second argument node_id identifies which node in the DAG plan this sub-question "
-                "corresponds to. Returns the updated node state after solving the sub-question, or "
+                "corresponds to. This tool returns the updated node state after solving the sub-question, or "
                 "provides feedback if the query cannot be answered.",
                 self._answer
             ),
             "update_node": Action(
-                "Update a DAG node with an answer. Prefer to use this method when you can answer "
+                "Update a DAG node with an answer. You **MUST** use this method when you can answer "
                 "a sub-question directly without executing the answer tool. "
                 "For example, if an answer can be inferred from the result of other nodes. "
                 "You may also update an already processed node with an alternative answer to explore "
@@ -223,13 +223,13 @@ class BaseDAGAgentV2(BaseDag, ABC):
 
                 suggestion_msg = f"I was unable to solve sub-question for node {failed_node_id}. Consider providing an \
 alternative answer for node {candidate_id} based on the sources provided below. This answer must be different from all \
-previously attempted answers. It should be FLEXIBLE in interpretation, and consider plausible assumptions \
-or entities in the sources including typos. Only when all alternatives are definitely exhausted should you return 'N/A'.\n\nSources for \
+previously attempted answers. However, it should be FLEXIBLE in interpretation, and consider plausible assumptions \
+or entities in the sources. Only when all alternatives are definitely exhausted should you return 'N/A'. \
+Remember to exhaust all possible alternatives before returning 'N/A', even if they assume typos, other interpretations, or \
+entities that may not seem related at first glance. \n\nSources for \
 node {candidate_id}:\n{sources_text}\n\nPreviously attempted answers: {exclude_list}\n\nCall \
 UPDATE_NODE('alternative_answer', '{candidate_id}') to update the node state with an alternative answer. \
-If no alternative answer exists, you may call UPDATE_NODE('N/A', '{candidate_id}') to mark the node as exhausted. \
-Remember to exhaust all possible alternatives before giving up, even if they assume typos, other interpretations, or \
-entities that may not seem related at first glance."
+If no alternative answer exists, you may call UPDATE_NODE('N/A', '{candidate_id}') to mark the node as exhausted"
                 return suggestion_msg, True
 
         return f"I was unable to solve sub-question for node {failed_node_id}. Attempt to solve \
@@ -529,7 +529,6 @@ solved yet: {unsolved_str}. Please solve these dependencies first."
         # Parse the DAG plan
         self.nodes = self._parse_dag_plan(response_content, DAGNodeV2)
 
-        # Phase 2: Execute DAG plan
         dag_state = self._serialize_dag_state(self.nodes)
 
         # Execute the DAG plan using the execution React Agent
@@ -597,7 +596,7 @@ class DAGAgentV2(BaseDAGAgentV2, MultiprocessingSearchAgent, ABC):
         search_function: Callable[[str],
                                   Tuple[List[str], List[str], Dict[str, int]]],
         args,
-        cores: int = 4
+        cores: int = 32
     ):
         MultiprocessingSearchAgent.__init__(self, args, cores=cores)
         BaseDAGAgentV2.__init__(self, search_function, args)
@@ -613,7 +612,8 @@ class StatefulDAGAgentV2(BaseDAGAgentV2, MultiprocessingStatefulSearchAgent, ABC
 
 DAG_EXECUTION_REACT_PROMPT = '''You are an intelligent agent that executes DAG (Directed Acyclic Graph) plans. \
 Your only responsibility is to systematically solve each sub-question in the DAG by using the available tools. \
-You should work through the DAG nodes in dependency order, solving independent nodes first, then nodes that depend on them.
+You should work through the DAG nodes in dependency order, solving independent nodes first, then nodes that depend on them \
+using the **RESULT** and **EXPLANATION** fields from completed nodes.
 
 When all nodes that can be completed are finished, you should provide "EXECUTION_COMPLETE" as your final answer \
 to indicate that DAG execution is finished.
@@ -627,6 +627,7 @@ DAG_SYNTHESIS_PROMPT = '''Answer the given question based on the available infor
 CONCISE and COMPLETE answer. Provide an EXACT answer using only words found in the results when possible. DO NOT REPEAT the \
 question in your answer under any circumstances. If the answer can be a single word (e.g., Yes, No, a date, or an object), \
 please provide just that word. If the information seems insufficient, please make plausible assumptions about the available information, \
-assuming typos or flexible interpretations. Only if definitely no answer exists, respond with 'N/A'.
+assuming typos, flexible interpretations, or best possible answer with the available information. Only if **definitely** no answer exists, \
+respond with 'N/A'.
 
 '''
