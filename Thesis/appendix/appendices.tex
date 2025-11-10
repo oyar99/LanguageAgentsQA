@@ -1,12 +1,65 @@
 \cleardoublepage
-\chapter{LLM Prompts.}
-\label{ch:appendices}
 
-This section demonstrates the prompts used in this work.
+\chapter{Results}
+\label{ch:results_apx}
+
+This section shows results for the baselines systems implemented in this work.
+
+\input{chapter4/qa_results}
+
+\chapter{LLM Prompts}
+\label{ch:prompts}
+
+\section{Baselines}
+\label{section:baselines_prompts}
+
+This section demonstrates the prompts used to design the RAG baseline systems.
 
 \input{appendix/prompt_base_qa}
 \input{appendix/prompt_base_qa_qwen}
 \input{appendix/prompt_base_qa_all}
 \input{appendix/prompt_base_locomo}
 \input{appendix/prompt_base_locomo_all}
+
+\cleardoublepage
+\section{QA Agent}
+\label{section:agent_prompts}
+
+This section shows the prompts used for implementing the variants of the QA Agent.
+
+\input{appendix/prompt_qa_agent_reranking}
+\input{appendix/prompt_qa_agent_reflection}
+
+\cleardoublepage
+\section{DAG and Auto DAG Agent}
+\label{section:dag_prompts}
+
+This section presents the prompts used for implementing both the DAG Agent and the Auto DAG Agent. Figure \ref{fig:prompt_base_dag} shows the base prompt used to construct the graph $G$, excluding the representative few-shot examples provided to the model during our experiments.
+
+\input{appendix/prompt_base_dag}
+
+\noindent Figure \ref{fig:prompt_dag_execution} shows the prompt used to execute the DAG plan in the DAG Agent. In addition, few-shot examples were provided for each supported command during our experiments. In the actual implementation, the execution loop is controlled programmatically, so the command to execute (SOLVE, ALTERNATIVE\_ANSWER, or FINAL\_ANSWER) is always known in advance. Because the agent only ever needs to respond to a single, predetermined command at each step, we removed definitions for unused commands and tools during LLM calls.
+
+\input{appendix/prompt_dag_execution}
+
+\noindent Similarly, figure \ref{fig:prompt_auto_dag_execution} shows the prompt used to execute the DAG plan in the Auto DAG Agent. In our experiments, we included few-shot examples.
+
+\input{appendix/prompt_auto_dag_execution}
+
+\noindent Figure \ref{fig:prompt_auto_dag_synthesis} shows the prompt used to synthesize the final answer in the Auto DAG Agent.
+
+\input{appendix/prompt_auto_dag_synthesis}
+
+\cleardoublepage
+\section{Long-lived QA Agent}
+
+Figure \ref{fig:prompt_cognitive} presents the prompt used to generate a correct reasoning chain after evaluating the correctness of an answer in the Long-lived QA Agent architecture.
+
+\input{appendix/prompt_cognitive}
+
+\cleardoublepage
+\section{Evaluation}
+
+This section demonstrates the prompt used to implement the LLM-based metric $L_1$.
+
 \input{appendix/prompt_evaluation_judge}

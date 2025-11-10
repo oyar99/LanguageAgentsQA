@@ -1,6 +1,10 @@
-\begin{figure}[ht]
+\begin{figure}[p]
     \centering
-    \lstinputlisting{./appendix/files/prompt_base_qa_qwen.txt}
-    \caption{Question Answering prompt used with Qwen2.5-14B.}
+    \resizebox{0.9\textwidth}{!}{%
+        \begin{minipage}{\textwidth}
+            \lstinputlisting{./appendix/files/prompt_base_qa_qwen.txt}
+        \end{minipage}%
+    }
+    \caption{Question Answering prompt used in MHQA benchmark experiments with Qwen2.5-14B.}
     \label{fig:qa-base-qwen}
 \end{figure}

@@ -311,7 +311,7 @@ respond with 'N/A'."""
 
         # Build the base prompt
         base_prompt = '''You are an intelligent DAG execution agent that responds to commands only. \
-You help with complex commands related to a DAG (Directed Acyclic Graph) of sub-questions by thinking
+You help with complex commands related to a DAG (Directed Acyclic Graph) of sub-questions by thinking \
 step-by-step about the command and the current state of the DAG. \
 
 '''

@@ -2,7 +2,7 @@
 \caption{QA DAG Agent}
 \label{alg:qa-dag}
 \KwIn{Question $q$}
-\KwOut{Final answer $a$ and documents $\Sigma(v)$}
+\KwOut{Final answer $a$ and documents $\Sigma(\cdot)$}
 
 \BlankLine
 \textbf{Phase 1: DAG Planning} \\
@@ -17,7 +17,7 @@ $t \gets 0$\;
     $\Sigma(v) \gets \emptyset$ \tcp*{supporting documents for $v$}
     $\text{original\_ans}(v) \gets \emptyset$ \tcp*{first non-empty answer of $v$}
 }
-$U \gets \{ v \in V \mid v \text{ has no incoming edges} \}$\;
+$U \gets \{ v \in V \mid \text{ans}(v) = \emptyset \ \text{and } \forall (u,v)\in E,\; \text{ans}(u) \neq \emptyset \}$\;
 
 \While{$t < T \ \text{and } U \neq \emptyset$}{
     $\text{restart} \gets \text{false}$\;

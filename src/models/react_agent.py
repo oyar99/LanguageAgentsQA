@@ -557,5 +557,5 @@ you are likely to be omitting important information or making mistakes in your r
 Analyze the observations you have made so far, and identify any plausible assumptions you can make from them to move on towards the next step. \
 Plausible assumptions are information that may not be explicitly stated in the observations, but can be reasonably inferred from them. \
 Do not continue to search for the same information again. Instead, use these assumptions to guide your next steps. Assumption should be based \
-only on the retrieved information. \
+only on the retrieved information.
 '''

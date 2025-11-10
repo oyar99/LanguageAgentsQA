@@ -131,10 +131,9 @@ to a given query, and thought process. Your task is to provide a relevance score
 between 0 and 100, where 0 means not relevant at all and 100 means highly relevant.
 If you are unsure about whether the document could be relevant, respond with a score of 50.
 
-
 ### Example
 
-Document: "The Girl in the Taxi (1937 film): The Girl in the Taxi is a 1937 British musical comedy fil directed by \
+Document: "The Girl in the Taxi (1937 film): The Girl in the Taxi is a 1937 British musical comedy film directed by \
 Andrew Berthomieu and starring Frances Day, Henri Garat and Lawrence Grossmith.
 Thought: "I need to find the director of the film The Girl in White to determine which director was born first."
 Query: "The Girl in White director"

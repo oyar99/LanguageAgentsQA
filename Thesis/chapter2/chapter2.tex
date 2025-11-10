@@ -14,14 +14,14 @@ Various mechanisms have long been studied in Natural Language Processing for mod
 \noindent Transformer-based architectures addressed many of these challenges by replacing recurrence with a self-attention mechanism, which enables each token to attend to all others in the input sequence \cite{10.5555/3295222.3295349}. This design has facilitated a wide range of applications, such as conversational agents. However, the self-attention block incurs a time and space complexity of $O(n^2)$ with respect to the sequence length $n$, making it costly to extend context windows with this approach alone \cite{pmlr-v201-duman-keles23a}\cite{wang2023augmentinglanguagemodelslongterm}. 
 
 \noindent To mitigate these limitations, some recent architectures have attempted to introduce recurrence into transformers, though such methods often suffer from information loss over long sequences \cite{dai-etal-2019-transformer}. Other strategies, such as positional interpolation, rescale position indices to align with those used during pretraining. While effective in some cases, these methods are limited to RoPE-based LLMs, and certain configurations, such as static YARN,  have been shown to significantly degrade performance on shorter texts \cite{ding2024longrope}\cite{peng2024yarn}.
-Another line of work explores external memory modules or residual side networks that persist information across inputs \cite{wang2023augmentinglanguagemodelslongterm}. However, these remain constrained by architecture-specific limitations.
+Another line of work explores external memory modules or residual side networks that persist information across inputs \cite{wang2023augmentinglanguagemodelslongterm}.
 
 \noindent Overall, while this area of research is promising, it represents significant challenges. Embedding all information directly into the context window increases token usage and computational cost. Moreover, as more content is added, it becomes increasingly difficult for the model to effectively attend to the most relevant information, often resulting in reduced performance \cite{liu2023lostmiddlelanguagemodels}\cite{leng2024longcontextragperformance}.
 
 \subsection{Retrieval Augmented Generation}
 \label{subsec:rag}
 
-Retrieval Augmented Generation enhances LLMs by integrating relevant knowledge from external sources into their context. Rather than relying solely on parametric memory, RAG retrieves supporting facts from external knowledge sources, making it a cost-effective and widely adopted approach for providing accurate and up-to-date information to the model \cite{lewis2021retrievalaugmentedgenerationknowledgeintensivenlp}. Figure \ref{fig:rag} illustrates a standard RAG pipeline for a QA task.
+Retrieval Augmented Generation enhances LLMs by integrating relevant knowledge from external sources into their context, making it a cost-effective and widely adopted approach for providing accurate and up-to-date information to the model \cite{lewis2021retrievalaugmentedgenerationknowledgeintensivenlp}. Figure \ref{fig:rag} illustrates a standard RAG pipeline for a QA task.
 
 \begin{figure}[h]
     \centering
@@ -30,9 +30,9 @@ Retrieval Augmented Generation enhances LLMs by integrating relevant knowledge f
     \label{fig:rag}
 \end{figure}
 
-\noindent Researchers have explored different retrieval granularities, including document chunks, summaries, and knowledge triples \cite{zeng2024structuralmemoryllmagents}, as well as diverse retrieval algorithms such as sparse methods (e.g., BM25) and dense embeddings. Dense vector embeddings, in particular, have become widely adopted. They encode text semantics into fixed-dimensional representations, typically ranging from a few hundred to several thousand dimensions. However, single-vector representations face fundamental limitations, they cannot effectively capture all possible top-$k$ combinations of relevant documents for a given query \cite{weller2025theoreticallimitationsembeddingbasedretrieval}. To address this, researchers have developed multi-vector embeddings, where documents are represented using multiple vectors instead of one. This richer representation has been shown to outperform single-vector methods in many scenarios \cite{santhanam-etal-2022-colbertv2}.
+\noindent Researchers have explored different retrieval granularities, including document chunks, summaries, and knowledge triples \cite{zeng2024structuralmemoryllmagents}, as well as diverse retrieval algorithms such as sparse methods (e.g., BM25) and dense embeddings. Dense vector embeddings, in particular, have become widely adopted. They encode text semantics into fixed-dimensional representations, typically ranging from a few hundred to several thousand dimensions. However, single-vector representations face fundamental limitations, as they cannot effectively capture all possible top-$k$ combinations of relevant documents for a given query \cite{weller2025theoreticallimitationsembeddingbasedretrieval}. To address this, researchers have developed multi-vector embeddings, where documents are represented using multiple vectors. This richer representation has been shown to outperform single-vector methods in many scenarios \cite{santhanam-etal-2022-colbertv2}.
 
-\noindent More advanced RAG architectures involve additional components. For example, some systems use a second-stage retriever to re-rank the initial retrieval set. Sun et al. investigated whether LLMs can be trained as re-rankers, concluding that they indeed outperform state-of-the-art supervised methods \cite{sun-etal-2023-chatgpt}.
+\noindent More advanced RAG architectures involve additional components. For example, some systems use a second-stage retriever to re-rank the initial retrieval set, and it has been shown that they outperform strong supervised methods \cite{sun-etal-2023-chatgpt}.
 
 \noindent Graph RAG, an alternative RAG architecture, uses an LLM to extract entities and relationships from a corpus to construct a knowledge graph, which enables more effective reasoning over structured data, a strategy particularly useful for answering global questions where conventional RAG methods often underperform  \cite{edge2024localglobalgraphrag}. HippoRAG, inspired by neurobiological systems, also adopts a graph-based design and has shown promising results \cite{NEURIPS2024_6ddc001d}.
 
@@ -49,7 +49,7 @@ Numerous prompting methods have been developed to enhance the capabilities of LL
     \label{fig:few-shot-prompt}
 \end{figure}
 
-\noindent Other prompting methods directly integrate reasoning and interaction. For example, \textbf{ReAct} generates both reasoning traces and textual actions in an interleaved manner. This framework allows models to interact with external environments, gather observations, and update their reasoning in a cycle \cite{yao2023react}\cite{language-agent-tutorial}.
+\noindent Other prompting methods directly integrate reasoning and interaction. For example, \textbf{ReAct} generates both reasoning traces and textual actions in an interleaved manner. This framework allows models to interact with external environments, gather observations, and reason in a continuous cycle \cite{yao2023react}\cite{language-agent-tutorial}.
 
 \begin{figure}[h]
     \centering
@@ -159,10 +159,10 @@ A variety of evaluation metrics have been established in the literature to asses
         \text{$L_1$} = \frac{1}{|Q|} \sum_{q \in Q} {j_q}
     \end{equation}
 
-    where $j_q = 1$ if the LLM judge considers the answer correct, and $j_q = 0$ otherwise.
+    where $j_q = 1$ if the LLM judge considers the answer to question $q$ correct, and $j_q = 0$ otherwise.
 \end{description}
 
-\noindent While other evaluation metrics such as BERTScore exist, this measure is not always well-suited for QA scenarios. BERTScore computes similarity between reference and predicted answers by comparing token embeddings from a pretrained language model \cite{zhang2020bertscoreevaluatingtextgeneration}, making it effective for capturing semantic similarity. However, in entity-centric datasets, BERTScore may assign high scores to incorrect answers when entities are close in the embedding space but are, in fact, completely different entities.
+\noindent While other evaluation metrics such as BERTScore exist, this measure is not always well-suited for QA scenarios. BERTScore computes similarity between reference and predicted answers by comparing token embeddings from a pretrained language model \cite{zhang2020bertscoreevaluatingtextgeneration}, making it effective for capturing semantic similarity. However, in entity-centric datasets, BERTScore may assign high scores to incorrect answers when entities are close in the embedding space but are, in fact, different entities.
 
 \noindent In our work, we place particular emphasis on $R_1$ and $L_1$, as they provide more flexibility in recognizing semantically correct answers. Our decision is consistent with prior work \cite{chen-etal-2019-evaluating}, and these metrics are well-suited for evaluating both retrieval and answer generation in the QA and MHQA tasks.
 
@@ -196,6 +196,20 @@ HippoRAG, briefly introduced in Section \ref{subsec:rag}, is a RAG system that a
 \noindent Their evaluation is based on a relatively small sample of 1,000 questions per dataset, making comparisons to other approaches difficult. More recent extensions propose incorporating both conceptual and contextual information into the graph and filtering triples to retain only the most relevant nodes during online retrieval \cite{gutiérrez2025ragmemorynonparametriccontinual}.
 
 \noindent In this work, we explore how cognitive language agents compare against such RAG frameworks, and further explore how they can be integrated into agentic workflows.
+
+\subsection{IRCoT}
+
+IRCoT is a method designed to solve multi-step questions. Given a question $q$, the system first retrieves a set of documents and then alternates between retrieval and reasoning until an answer is produced. At each step, the model generates a CoT reasoning statement, which is then used for the retrieval step. This iterative process enables the system to gather information that may not be retrieved from the original question alone \cite{trivedi-etal-2023-interleaving}.
+
+\noindent Although simple, IRCoT shows improved performance with GPT-3 on benchmarks such as MuSiQue. IRCoT can be viewed as a simplified version of a ReAct agent, since it interleaves reasoning and retrieval. However, it does not incorporate additional language-agent components such as episodic memory, or tool use.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.95\textwidth]{images/ircot.png}\\[-0.25cm]
+    \caption{IRCoT framework: (i) The system retrieves an initial set of documents used as context for an LLM, (ii) The system interleaves reasoning via CoT and retrieval to iteratively retrieve more documents until an answer is reached \cite{trivedi-etal-2023-interleaving}.}
+    \label{fig:ircot}
+\end{figure}
+
 
 \subsection{PAR RAG}
 

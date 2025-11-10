@@ -3,4 +3,10 @@
 \label{ch:conclusion}
 \label{ch:chapter6}
 
-We conducted a systematic evaluation of different language agent architectures, and demonstrated how these systems excel at QA tasks.
+We conducted a systematic evaluation of multiple language-agent architectures and demonstrated how these architectures can be used for QA systems, particularly for MHQA tasks. Our results show that agents such as the DAG Agent and the Auto DAG Agent leverage both their decision-making and reasoning capabilities to address complex questions, achieving significantly higher recall across all MHQA benchmarks. Additionally, we show that these agents achieve competitive QA performance compared with strong SOTA systems such as HippoRAG. Our results also suggest that language-agent architectures remain relatively robust to the choice of the retriever, as the QA Agent performs similarly when using ColBERTv2 or HippoRAG.
+
+\noindent We further demonstrate with the Cognitive QA Agent that incorporating cognitive long-term memory components can substantially improve QA performance on certain benchmarks. These memory mechanisms allow agents to retain previously learned information and reuse it effectively when answering new questions.
+
+\noindent However, cognitive language-agent architectures also introduce challenges. Their higher token consumption leads to increased inference costs and latency. Among all evaluated systems, the simpler QA Agent based on the ReAct framework offers the best balance between performance and efficiency. Moreover, language agents exhibit limited generalization to other question types and conversational settings. On LoCoMo, traditional RAG systems continue to outperform language-agent architectures.
+
+\noindent Future work could explore strategies to strengthen the reasoning capabilities of cognitive language agents. While the DAG Agent and Auto DAG Agent achieve significant higher retrieval performance, these gains do not translate proportionally into QA improvements. Understanding and closing this gap is essential for broader adoption of language-agent-based QA systems. Additionally, investigating the use of Small Language Models (SLMs) as the underlying engine for reasoning and action may offer favorable trade-offs between performance, cost, and latency for QA tasks.
