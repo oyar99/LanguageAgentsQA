@@ -60,7 +60,7 @@ pip install -r requirements.txt
 
 ## Closed-Source Models
 
-The script supports any **closed-source models** via the Azure Open AI API and **open-source models** that are available via VLLM.
+The script supports any **closed-source models** via the Azure Open AI API and **open-source models** that are available via vLLM.
 
 Sample Models
 
@@ -72,12 +72,12 @@ Sample Models
 | Qwen2.5-1.5B-Instruct       | 32,768 tokens    | 8,192 tokens       |
 | Gemma 3-27B                 | 128,000 tokens   | 8,192 tokens       |
 
-## VLLM
+## vLLM
 
-To start a `VLLM` HTTP server, the following command can be used.
+To start a `vLLM` HTTP server, the following command can be used.
 
 ```sh
-vllm serve Qwen/Qwen2.5-14B-Instruct --tensor-parallel-size 2 --dtype float16 --gpu-memory-utilization 0.95 --max-model-len 32000 --max-num-seqs 128
+vLLM serve Qwen/Qwen2.5-14B-Instruct --tensor-parallel-size 2 --dtype float16 --gpu-memory-utilization 0.95 --max-model-len 32000 --max-num-seqs 128
 ```
 
 **Explanation:**
