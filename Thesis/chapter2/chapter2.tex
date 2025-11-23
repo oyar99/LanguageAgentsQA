@@ -5,23 +5,23 @@
 
 \section{Referential Framework}
 
-In this section, we introduce the relevant concepts used throughout this work. We cover foundational theory including Large Language Models, Retrieval Augmented Generation, as well as, advanced topics such as a formal introduction of language agents.
+In this section, we introduce the relevant concepts used throughout this work. We cover foundational theory including Large Language Models, Retrieval-Augmented Generation, as well as, advanced topics such as a formal introduction of language agents.
 
 \subsection{Long-Context LLMs}
 
 Various mechanisms have long been studied in Natural Language Processing for modeling long-term dependencies. Before the introduction of the transformer architecture, Recurrent Neural Networks (RNNs) represented the state of the art. RNNs maintain a hidden state that recursively propagates through the sequence, allowing them to encode information from previous tokens as context for later inputs \cite{alma991005389998907681}. However, RNNs were both prohibitively expensive to train and difficult to optimize due to issues like vanishing and exploding gradients \cite{dai-etal-2019-transformer}.
 
-\noindent Transformer-based architectures addressed many of these challenges by replacing recurrence with a self-attention mechanism, which enables each token to attend to all others in the input sequence \cite{10.5555/3295222.3295349}. This design has facilitated a wide range of applications, such as conversational agents. However, the self-attention block incurs a time and space complexity of $O(n^2)$ with respect to the sequence length $n$, making it costly to extend context windows with this approach alone \cite{pmlr-v201-duman-keles23a}\cite{wang2023augmentinglanguagemodelslongterm}. 
+\noindent Transformer-based architectures addressed many of these challenges by replacing recurrence with a self-attention mechanism, which enables each token to attend to all others in the input sequence \cite{10.5555/3295222.3295349}. This design has facilitated a wide range of applications, such as conversational agents. However, the self-attention block incurs a time and space complexity of $O(n^2)$ with respect to the sequence length $n$, making it costly to extend context windows with this approach alone \cite{pmlr-v201-duman-keles23a,wang2023augmentinglanguagemodelslongterm}. 
 
-\noindent To mitigate these limitations, some recent architectures have attempted to introduce recurrence into transformers, though such methods often suffer from information loss over long sequences \cite{dai-etal-2019-transformer}. Other strategies, such as positional interpolation, rescale position indices to align with those used during pretraining. While effective in some cases, these methods are limited to RoPE-based LLMs, and certain configurations, such as static YARN,  have been shown to significantly degrade performance on shorter texts \cite{ding2024longrope}\cite{peng2024yarn}.
+\noindent To mitigate these limitations, some recent architectures have attempted to introduce recurrence into transformers, though such methods often suffer from information loss over long sequences \cite{dai-etal-2019-transformer}. Other strategies, such as positional interpolation, rescale position indices to align with those used during pretraining. While effective in some cases, these methods are limited to RoPE-based LLMs, and certain configurations, such as static YARN,  have been shown to significantly degrade performance on shorter texts \cite{ding2024longrope,peng2024yarn}.
 Another line of work explores external memory modules or residual side networks that persist information across inputs \cite{wang2023augmentinglanguagemodelslongterm}.
 
-\noindent Overall, while this area of research is promising, it represents significant challenges. Embedding all information directly into the context window increases token usage and computational cost. Moreover, as more content is added, it becomes increasingly difficult for the model to effectively attend to the most relevant information, often resulting in reduced performance \cite{liu2023lostmiddlelanguagemodels}\cite{leng2024longcontextragperformance}.
+\noindent Overall, while this area of research is promising, it represents significant challenges. Embedding all information directly into the context window increases token usage and computational cost. Moreover, as more content is added, it becomes increasingly difficult for the model to effectively attend to the most relevant information, often resulting in reduced performance \cite{liu2023lostmiddlelanguagemodels,leng2024longcontextragperformance}.
 
-\subsection{Retrieval Augmented Generation}
+\subsection{Retrieval-Augmented Generation}
 \label{subsec:rag}
 
-Retrieval Augmented Generation enhances LLMs by integrating relevant knowledge from external sources into their context, making it a cost-effective and widely adopted approach for providing accurate and up-to-date information to the model \cite{lewis2021retrievalaugmentedgenerationknowledgeintensivenlp}. Figure \ref{fig:rag} illustrates a standard RAG pipeline for a QA task.
+Retrieval-Augmented Generation enhances LLMs by integrating relevant knowledge from external sources into their context, making it a cost-effective and widely adopted approach for providing accurate and up-to-date information to the model \cite{lewis2021retrievalaugmentedgenerationknowledgeintensivenlp}. Figure \ref{fig:rag} illustrates a standard RAG pipeline for a QA task.
 
 \begin{figure}[h]
     \centering
@@ -40,7 +40,7 @@ Retrieval Augmented Generation enhances LLMs by integrating relevant knowledge f
 
 \subsection{Prompt Engineering}
 
-Numerous prompting methods have been developed to enhance the capabilities of LLMs, enabling them to reason over complex datasets. Techniques such as \textbf{Few-Shot Prompting} and \textbf{Chain of thought (CoT)} have shown impressive results in tasks such as mathematical reasoning \cite{wei2023chainofthoughtpromptingelicitsreasoning}. Few-Show Prompting consists of providing the model with input-output examples that serve as guidance, a process often referred to as \textit{in-context learning}. CoT, on the other hand, strengthens reasoning by generating intermediate reasoning steps before producing a final answer. These two methods can also be combined, as illustrated in Figure \ref{fig:few-shot-prompt}.
+Numerous prompting methods have been developed to enhance the capabilities of LLMs, enabling them to reason over complex datasets. Techniques such as \textbf{Few-Shot Prompting} and \textbf{Chain of thought (CoT)} have shown impressive results in tasks such as mathematical reasoning \cite{wei2023chainofthoughtpromptingelicitsreasoning}. Few-Shot Prompting consists of providing the model with input-output examples that serve as guidance, a process often referred to as \textit{in-context learning} \cite{NEURIPS2020_1457c0d6}. CoT, on the other hand, strengthens reasoning by generating intermediate reasoning steps before producing a final answer. These two methods can also be combined, as illustrated in Figure \ref{fig:few-shot-prompt}.
 
 \begin{figure}[h]
     \centering
@@ -49,7 +49,7 @@ Numerous prompting methods have been developed to enhance the capabilities of LL
     \label{fig:few-shot-prompt}
 \end{figure}
 
-\noindent Other prompting methods directly integrate reasoning and interaction. For example, \textbf{ReAct} generates both reasoning traces and textual actions in an interleaved manner. This framework allows models to interact with external environments, gather observations, and reason in a continuous cycle \cite{yao2023react}\cite{language-agent-tutorial}.
+\noindent Other prompting methods directly integrate reasoning and interaction. For example, \textbf{ReAct} generates both reasoning traces and textual actions in an interleaved manner. This framework allows models to interact with external environments, gather observations, and reason in a continuous cycle \cite{yao2023react,language-agent-tutorial}.
 
 \begin{figure}[h]
     \centering
@@ -70,10 +70,6 @@ An agent is broadly defined as a system that can perceive its environment, reaso
 
 \noindent Language Agents are autonomous systems that integrate LLMs for reasoning and communication, using language as their primary medium of interaction with both the environment and decision-making processes \cite{language-agent-tutorial}. Figure \ref{fig:cognitive-arch} provides a high-level overview of the cognitive architecture behind these systems.
 
-\noindent A central component of language agents is memory, which allows them to store and retrieve information. This capability supports learning from experience, maintain coherence over long interactions, and making more informed decisions. Drawing inspiration from human cognition, memory in language agents is often categorized into four types: \textit{episodic memory}, which stores past experiences; \textit{semantic memory}, which encodes factual knowledge; \textit{procedural memory}, which captures rules or functions; and \textit{working memory}, which manages short-term, task-relevant information \cite{sumers2024cognitive}.
-
-\noindent Several systems embody these concepts in different ways. MemGPT, for example, manages multiple storage tiers and leverages episodic and semantic memory for retrieval \cite{packer2024memgptllmsoperatingsystems}. While Graph Reader encodes knowledge in graph structures to support reasoning over long inputs \cite{li2024graphreaderbuildinggraphbasedagent}. AriGraph integrates episodic and semantic memories within a unified knowledge graph, enabling the agent to access structured information for more complex reasoning tasks \cite{anokhin2024arigraphlearningknowledgegraph}.
-
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.95\textwidth]{images/cognitive-arch.pdf}\\[-0.25cm]
@@ -81,17 +77,21 @@ An agent is broadly defined as a system that can perceive its environment, reaso
     \label{fig:cognitive-arch}
 \end{figure}
 
+\noindent A central component of language agents is memory, which allows them to store and retrieve information. This capability supports learning from experience, maintain coherence over long interactions, and making more informed decisions. Drawing inspiration from human cognition, memory in language agents is often categorized into four types: \textit{episodic memory}, which stores past experiences; \textit{semantic memory}, which encodes factual knowledge; \textit{procedural memory}, which captures rules or functions; and \textit{working memory}, which manages short-term, task-relevant information \cite{sumers2024cognitive}.
+
+\noindent Several systems embody these concepts in different ways. MemGPT, for example, manages multiple storage tiers and leverages episodic and semantic memory for retrieval \cite{packer2024memgptllmsoperatingsystems}. While Graph Reader encodes knowledge in graph structures to support reasoning over long inputs \cite{li2024graphreaderbuildinggraphbasedagent}. AriGraph integrates episodic and semantic memories within a unified knowledge graph, enabling the agent to access structured information for more complex reasoning tasks \cite{anokhin2024arigraphlearningknowledgegraph}.
+
 \noindent Language agents can also be augmented with external tools. The ability of LLMs to process structured formats such as JSON or XML facilitates integration with domain-specific APIs and databases \cite{language-agent-tutorial}. AriGraph, for instance, uses this capability to navigate a knowledge graph and retrieve relevant information for QA tasks \cite{anokhin2024arigraphlearningknowledgegraph}.
 
-\noindent The reasoning and planning capabilities of language agents become particularly powerful when combined with prompting strategies designed to guide multi-step reasoning. ReAct \cite{yao2023react}, for instance, interleaves reasoning and action, helping agents analyze their environment, make decisions and execute plans.
+\noindent The reasoning and planning capabilities of language agents become particularly powerful when combined with prompting strategies designed to guide multi-step reasoning. ReAct, for instance, interleaves reasoning and action, helping agents analyze their environment, make decisions, and execute plans \cite{yao2023react} .
 
 \noindent Recent work has also explored multi-agent systems, where  agents collaborate or debate to solve a task \cite{language-agent-tutorial}. For example, Zhao et al. introduced a collaborative framework for QA over long documents in which a leader agent partitions a document into $m$ chunks, delegates each chunk to a worker agent, and aggregates their responses until a confident answer is reached \cite{zhao-etal-2024-longagent}.
 
-\noindent Although language agents have been studied in diverse settings, including text-based games, human simulacra, and task automation \cite{10.1145/3586183.3606763}\cite{anokhin2024arigraphlearningknowledgegraph}, questions remain about their role in natural language tasks such as QA and MHQA. In particular, further exploration is needed to understand how planning and memory, when combined with techniques like RAG and prompt engineering, can contribute to more effective and adaptable systems in these domains.
+\noindent Although language agents have been studied in diverse settings, including text-based games, human simulacra, and task automation \cite{10.1145/3586183.3606763,anokhin2024arigraphlearningknowledgegraph}, questions remain about their role in natural language tasks such as QA and MHQA. In particular, further exploration is needed to understand how planning and memory, when combined with techniques like RAG and prompt engineering, can contribute to more effective and adaptable systems in these domains.
 
 \subsection{Question Answering}
 
-Question Answering (QA) is a foundational task in natural language processing that involves predicting an answer given a question and some context. Recent advances in LLMs have led to significant progress in this area, enabling the development of systems that perform well across a range of diverse datasets and domains \cite{10.1561/1500000102}.
+Question Answering (QA) is a foundational task in natural language processing that involves producing an answer given a question and some context. Recent advances in LLMs have led to significant progress in this area, enabling the development of systems that perform well across a range of diverse datasets and domains \cite{10.1561/1500000102}.
 
 
 \noindent Despite these improvements, certain QA sub-tasks remain challenging. For instance, Textbook Question Answering (TQA) poses difficulties due to its reliance on long passages, as well as the integration of visual elements such as diagrams and tables \cite{ALAWWAD2025111332}.
@@ -109,18 +109,18 @@ A variety of evaluation metrics have been established in the literature to asses
 \noindent Let $Q$ denote the set of queries. For each query $q \in Q$, we define:
 
 \begin{itemize}
-    \item[] $R_q$: The number of relevant documents for query $q$
+    \item[] $R_q$: The total number of relevant documents for query $q$
     \item[] $r_q$: The number of relevant documents retrieved for query $q$
-    \item[] $k_q$: The total number of unique documents retrieved for query $q$
+    \item[] $k_q$: The number of unique documents retrieved for query $q$
 \end{itemize}
 
 \noindent For unranked retrieval sets, macro-averaged metrics are commonly reported, ensuring equal weight is assigned to each query.
 
 \begin{description}
-    \item[Macro Retrieval (R)] The fraction of relevant documents returned by the system, averaged across queries \cite{Manning_Raghavan_Schütze_2008}:
+    \item[Macro Recall (R)] The fraction of relevant documents returned by the system, averaged across queries \cite{Manning_Raghavan_Schütze_2008}:
 
     \begin{equation}
-        \text{Macro Retrieval (R)} = \frac{1}{|Q|} \sum_{q \in Q} {\frac{r_q}{R_q}}
+        \text{Macro Recall (R)} = \frac{1}{|Q|} \sum_{q \in Q} {\frac{r_q}{R_q}}
     \end{equation}
     \item[Macro Precision (P)] The fraction of retrieved documents that are relevant, averaged across queries \cite{Manning_Raghavan_Schütze_2008}:
 
@@ -135,11 +135,11 @@ A variety of evaluation metrics have been established in the literature to asses
     \end{equation}
 \end{description}
 
-\noindent For ranked retrieval sets, \textbf{retrieval@K} \cite{Manning_Raghavan_Schütze_2008} is commonly used. Let $r_q@K$ be the number of relevant documents retrieved within the top-$k$ documents for query $q$. Then:
+\noindent For ranked retrieval sets, \textbf{recall@$k$} is commonly used \cite{Manning_Raghavan_Schütze_2008}. Let $r_q@k$ be the number of relevant documents retrieved within the top-$k$ documents for query $q$. Then:
 
 \begin{equation}
     \label{eq:mrk}
-    \text{Macro retrieval@K} = \frac{1}{|Q|} \sum_{q \in Q} {\frac{r_q@K}{R_q}}
+    \text{Macro recall@$k$} = \frac{1}{|Q|} \sum_{q \in Q} {\frac{r_q@k}{R_q}}
 \end{equation}
 
 \subsubsection{Question Answering Metrics}
@@ -153,7 +153,7 @@ A variety of evaluation metrics have been established in the literature to asses
     \begin{equation}
         \text{ROUGE} = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall} + \epsilon}
     \end{equation}
-    \item[LLM Judge ($L_1$)] Human evaluation is a reliable method for assessing the quality of LLM-generated responses. However, it is both costly and time-consuming. Recently, LLM-based evaluators have gained popularity as a scalable alternative due to their ability to align well with human preferences \cite{zheng2023judgingllmasajudgemtbenchchatbot}. Their increasing adoption reflects their ability to approximate human judgment at scale. LLM judges can be used as a binary evaluator \cite{li2024llmsasjudgescomprehensivesurveyllmbased}, which assigns a score of 1 if it determines that the predicted and reference answers are semantically equivalent. Formally:
+    \item[LLM Judge ($L_1$)] Human evaluation is a reliable method for assessing the quality of LLM-generated responses. However, it is both costly and time-consuming. Recently, LLM-based evaluators have gained popularity as a scalable alternative due to their ability to align well with human preferences \cite{zheng2023judgingllmasajudgemtbenchchatbot,li2024llmsasjudgescomprehensivesurveyllmbased}. Their increasing adoption reflects their ability to approximate human judgment at scale. LLM judges can be used as a binary evaluator, which assigns a score of 1 if it determines that the predicted and reference answers are semantically equivalent. Formally:
 
     \begin{equation}
         \text{$L_1$} = \frac{1}{|Q|} \sum_{q \in Q} {j_q}
@@ -162,9 +162,9 @@ A variety of evaluation metrics have been established in the literature to asses
     where $j_q = 1$ if the LLM judge considers the answer to question $q$ correct, and $j_q = 0$ otherwise.
 \end{description}
 
-\noindent While other evaluation metrics such as BERTScore exist, this measure is not always well-suited for QA scenarios. BERTScore computes similarity between reference and predicted answers by comparing token embeddings from a pretrained language model \cite{zhang2020bertscoreevaluatingtextgeneration}, making it effective for capturing semantic similarity. However, in entity-centric datasets, BERTScore may assign high scores to incorrect answers when entities are close in the embedding space but are, in fact, different entities.
+\noindent While other evaluation metrics such as BERTScore exist, this measure is not always well-suited for QA scenarios. BERTScore computes similarity between reference and predicted answers by comparing token embeddings from a pretrained language model, making it effective for capturing semantic similarity \cite{zhang2020bertscoreevaluatingtextgeneration}. However, in entity-centric datasets, BERTScore may assign high scores to incorrect answers when entities are close in the embedding space but are, in fact, different entities.
 
-\noindent In our work, we place particular emphasis on $R_1$ and $L_1$, as they provide more flexibility in recognizing semantically correct answers. Our decision is consistent with prior work \cite{chen-etal-2019-evaluating}, and these metrics are well-suited for evaluating both retrieval and answer generation in the QA and MHQA tasks.
+\noindent In our work, we place particular emphasis on $R_1$ and $L_1$, as they provide more flexibility in recognizing correct answers. Our decision is consistent with prior work \cite{chen-etal-2019-evaluating}.
 
 \section{State of the art}
 
@@ -182,7 +182,7 @@ HippoRAG, briefly introduced in Section \ref{subsec:rag}, is a RAG system that a
 
 \noindent The system identifies entities such as \textit{Nicholas J. Belkin}, \textit{School of Communication and Information at Rutgers University}, and \textit{digital libraries}. It then generates triples like (\textit{Nicholas J. Belkin}, \textit{is}, \textit{Professor}), and (\textit{Nicholas J. Belkin}, \textit{researches}, \textit{digital libraries}). These triples form a graph of entities and relations. To enrich the graph, HippoRAG uses a dense embedding model to detect semantically similar entities above a similarity threshold, adding additional edges \cite{NEURIPS2024_6ddc001d}.
 
-\noindent In the online retrieval phase, an LLM extracts named entities from the query. These entities are encoded using the embedding model and matched to graph nodes via cosine similarity. The top-matched nodes are selected as query nodes and serve as seeds for a Personalized Page Rank algorithm (PPA). PPR propagates probability mass through the graph starting from these query nodes, assigning high scores to nodes in their local neighborhoods. The resulting ranking scores determine the final retrieval set \cite{NEURIPS2024_6ddc001d}.
+\noindent In the online retrieval phase, an LLM extracts named entities from the query. These entities are encoded using the embedding model and matched to graph nodes via cosine similarity. The top-matched nodes are selected as query nodes and serve as seeds for a Personalized Page Rank algorithm (PPR). PPR propagates probability mass through the graph starting from these query nodes, assigning high scores to nodes in their local neighborhoods. The resulting ranking scores determine the final retrieval set \cite{NEURIPS2024_6ddc001d}.
 
 \begin{figure}[h]
     \centering
@@ -193,20 +193,20 @@ HippoRAG, briefly introduced in Section \ref{subsec:rag}, is a RAG system that a
 
 \noindent Rather than relying on multi-step retrieval, HippoRAG retrieves all relevant passages in a single pass. Authors show that it outperforms alternatives such as ColBERTv2, particularly on challenging datasets like MuSiQue and 2Wiki \cite{trivedi2021musique, ho-etal-2020-constructing}. Moreover, HippoRAG is complementary to other SOTA methods, such as IRCoT, which uses iterative retrieval \cite{trivedi-etal-2023-interleaving}.
 
-\noindent Their evaluation is based on a relatively small sample of 1,000 questions per dataset, making comparisons to other approaches difficult. More recent extensions propose incorporating both conceptual and contextual information into the graph and filtering triples to retain only the most relevant nodes during online retrieval \cite{gutiérrez2025ragmemorynonparametriccontinual}.
+\noindent Their evaluation is based on a relatively small sample of 1,000 questions per dataset. More recent extensions propose incorporating both conceptual and contextual information into the graph and filtering triples to retain only the most relevant nodes during online retrieval \cite{gutiérrez2025ragmemorynonparametriccontinual}.
 
 \noindent In this work, we explore how cognitive language agents compare against such RAG frameworks, and further explore how they can be integrated into agentic workflows.
 
 \subsection{IRCoT}
 
-IRCoT is a method designed to solve multi-step questions. Given a question $q$, the system first retrieves a set of documents and then alternates between retrieval and reasoning until an answer is produced. At each step, the model generates a CoT reasoning statement, which is then used for the retrieval step. This iterative process enables the system to gather information that may not be retrieved from the original question alone \cite{trivedi-etal-2023-interleaving}.
+IRCoT is a method designed to solve multi-step questions. Given a question $q$, the system first retrieves a set of documents and then alternates between retrieval and reasoning until an answer is produced. At each step, the model generates a CoT reasoning trace, which is then used for the retrieval step. This iterative process enables the system to gather information that might not be retrieved from the original question alone \cite{trivedi-etal-2023-interleaving}.
 
-\noindent Although simple, IRCoT shows improved performance with GPT-3 on benchmarks such as MuSiQue. IRCoT can be viewed as a simplified version of a ReAct agent, since it interleaves reasoning and retrieval. However, it does not incorporate additional language-agent components such as episodic memory, or tool use.
+\noindent Although simple, IRCoT shows improved performance with GPT-3 on benchmarks such as MuSiQue. IRCoT can be interpreted as a simplified variant of a ReAct agent because it interleaves reasoning and retrieval. However, it does not incorporate additional language agent components such as episodic memory or tool use.
 
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.95\textwidth]{images/ircot.png}\\[-0.25cm]
-    \caption{IRCoT framework: (i) The system retrieves an initial set of documents used as context for an LLM, (ii) The system interleaves reasoning via CoT and retrieval to iteratively retrieve more documents until an answer is reached \cite{trivedi-etal-2023-interleaving}.}
+    \caption{IRCoT framework: (i) The system retrieves an initial set of documents used as context for an LLM, and then (ii) interleaves reasoning via CoT and retrieval to iteratively retrieve more documents until an answer is reached \cite{trivedi-etal-2023-interleaving}.}
     \label{fig:ircot}
 \end{figure}
 
@@ -224,7 +224,7 @@ PAR RAG is a RAG framework designed for MHQA tasks. It is composed of three modu
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.95\textwidth]{images/par_rag.eps}\\[-0.25cm]
-    \caption{PAR RAG framework: (i) Plan Phase, where an LLM decomposes the question into a structured sequences of sub-questions, (ii) Action Phase, where the plan is executed step by step, and intermediate results are produced, and (iii) Review Phase, where each intermediate answer is validated with an LLM to prevent error propagation \cite{zhang2025credibleplandrivenragmethod}.}
+    \caption{PAR RAG framework: (i) Plan Phase, where an LLM decomposes the question into a structured sequence of sub-questions, (ii) Action Phase, where the plan is executed step by step, and intermediate results are produced, and (iii) Review Phase, where each intermediate answer is validated with an LLM to prevent error propagation \cite{zhang2025credibleplandrivenragmethod}.}
     \label{fig:par_rag}
 \end{figure}
 

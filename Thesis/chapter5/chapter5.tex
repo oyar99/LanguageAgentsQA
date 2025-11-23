@@ -2,25 +2,27 @@
 \chapter{Discussion}
 \label{ch:discussion}
 
-In this section, we provide further insights into the trade-offs observed across the evaluated language-agent architectures.
+In this section, we provide further insights into the trade-offs observed across the evaluated language agent architectures.
 
 \input{chapter5/cost/qa_cost_prompt_tech}
 
-\noindent To better understand their computational efficiency, we analyze the total token consumption, separating input and output tokens. Figure \ref{fig:qa_token_prompt_tech} and \ref{fig:qa_avg_token_prompt_tech} present the total and average token usage across the RAG baseline with ColBERTv2 ($k=100$), the QA Agent, the Auto DAG Agent, and the Cognitive QA Agent, evaluated on the four QA datasets, respectively. This comparison shows that more advanced language-agent architectures, particularly those with cognitive features, consume substantially more tokens than simpler baselines. 
+\noindent To better understand their computational efficiency, we analyze the total token consumption, separating input and output tokens. Figure \ref{fig:qa_token_prompt_tech} and \ref{fig:qa_avg_token_prompt_tech} present the total and average token usage across the RAG baseline with ColBERTv2 ($k=100$), the QA Agent, the Auto DAG Agent, and the Cognitive QA Agent, evaluated on the four QA datasets. This comparison shows that more advanced language agent architectures, particularly those with cognitive features, consume substantially more tokens than simpler baselines.
 
-\noindent Overall, the simpler QA Agent achieves the best balance between performance and cost. It consumes considerably fewer tokens than one of the strongest RAG baselines, ColBERTv2 ($k = 100$), while delivering results that remain competitive with more advanced language-agent architectures such as the Auto DAG Agent. The increased token usage of the Auto DAG Agent arises from the expansion of its working memory, which accumulates contextual information as it advances through the reasoning plan. Moreover, its procedural memory requires additional space to encode the rules that govern internal actions and updates to its episodic memory, including few-shot examples.
+\noindent Overall, the simpler QA Agent achieves the best balance between performance and cost. It consumes considerably fewer tokens than one of the strongest RAG baselines, ColBERTv2 ($k = 100$), while still delivering results that remain competitive with more advanced language agent architectures such as the Auto DAG Agent. The increased token usage of the Auto DAG Agent arises from the expansion of its working memory, which accumulates contextual information as it advances through the reasoning plan. Additionally, its procedural memory requires extra space to encode the rules that govern internal actions and updates to its episodic memory, including few-shot examples.
 
 \noindent Similarly, the Long-lived QA Agent exhibits higher token consumption, particularly on 2Wiki and MuSiQue, where it also achieves strong performance. In these cases, the agent retrieves and integrates a larger number of semantically related examples from its long-term memory, increasing input tokens counts.
 
 \input{chapter5/cost/qa_avg_cost_prompt_tech}
 
-\noindent These findings highlight a key challenge for the broader adoption of language-agent architectures in QA systems. The substantial token overhead not only raises inference costs but also introduces additional latency, posing further challenges for scalable applications.
+\noindent These findings highlight a key challenge for the broader adoption of language agent architectures in QA systems. The substantial token overhead not only raises inference costs but also introduces additional latency, which can be problematic in real-time or large-scale applications Understanding and mitigating these trade-offs is therefore essential for designing agents that are both effective and scalable.
 
-\noindent Furthermore, Figure \ref{fig:locomo_dist} shows the distribution of questions with $R_1 < 0.5$ in the LoCoMo dataset for the strongest baseline, RAG with ColBERTv2 ($k = 100$), and the Auto DAG Agent with GPT-4o-mini. Single-hop questions account for $43.9\%$ of incorrect questions for ColBERTv2 and $51.7\%$ for the Auto DAG Agent, showing that the language agent struggles to generalize to different question types. We also observe an increase in the number of multi-hop questions answered incorrectly by the agent, but these questions have a different structure compared to other datasets. For example, the question \textit{Where has Melanie camped?} requires gathering information from multiple conversations turns to provide the expected answer (\textit{beach, mountains, forest}). However, the question is not composed of multiple-sub-questions, a structure that the language agents are specifically designed to handle, which helps explain the drop in performance on this benchmark.
+\noindent Furthermore, Figure \ref{fig:locomo_dist} shows the distribution of questions with $R_1 < 0.5$ in the LoCoMo dataset for the strongest baseline, RAG with ColBERTv2 ($k = 100$), and the Auto DAG Agent with GPT-4o-mini. Single-hop questions account for $43.9\%$ of incorrect questions for ColBERTv2 and $51.7\%$ for the Auto DAG Agent, showing that the language agent struggles to generalize to different question types. We also observe an increase in the number of multi-hop questions answered incorrectly by the agent, but these questions have a different structure compared to other datasets. For example, the question \textit{Where has Melanie camped?} requires gathering information from multiple conversations turns to provide the expected answer: \textit{beach, mountains, forest}. However, the question is not composed of multiple-sub-questions, a structure that the language agents are specifically designed to handle, which helps explain the drop in performance on this benchmark.
+
+\noindent These findings suggest that the proposed language agent architectures struggle to generalize across different question types and domains, highlighting the need for architectures capable of handling a broader range of questions to support real-world scenarios.
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=.9\textwidth]{images/locomo_error_comparison.eps}
+    \includegraphics[width=\textwidth]{images/locomo_error_comparison.eps}
     \caption{LoCoMo error distribution between ColBERTv2 ($k = 100$) and Auto DAG Agent with GPT-4o-mini.}
     \label{fig:locomo_dist}
 \end{figure}

@@ -8,7 +8,7 @@ You can choose the following tools to execute the DAG plan.
 
 ## AVAILABLE TOOLS
 
-- **answer(query, node_id)**: Answers a sub-question. This tool takes a query string that should explicitly contain all entities and keywords needed to answer the query. The query must **NOT** contain any node IDs or such as node_1, node_2, under any circumstances. Instead, replace node references with actual values from completed nodes. The second argument node_id identifies which node in the DAG plan this sub-question corresponds to. This tool returns the updated node state after solving the sub-question, or provides feedback if the query cannot be answered.
+- **answer(query, node_id)**: Answers a sub-question. This tool takes a query string that should explicitly contain all entities and keywords needed to answer the query. The query must **NOT** contain any node IDs such as node_1, node_2, under any circumstances. Instead, replace node references with actual values from completed nodes. The second argument node_id identifies which node in the DAG plan this sub-question corresponds to. This tool returns the updated node state after solving the sub-question, or provides feedback if the query cannot be answered.
 - **update_node(answer, node_id)**: Update a DAG node with an answer. You **MUST** use this method when you can answer a sub-question directly without executing the answer tool. For example, if an answer can be inferred from the result of other nodes. You may also update an already processed node with an alternative answer to explore different paths. The first argument is the value to update the node with, and the second argument is the node_id to update. Returns the updated node state. 
 
 ## RESPONSE FORMAT

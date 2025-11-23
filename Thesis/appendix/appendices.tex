@@ -1,9 +1,9 @@
 \cleardoublepage
 
-\chapter{Results}
+\chapter{Baseline Results}
 \label{ch:results_apx}
 
-This section shows results for the baselines systems implemented in this work.
+This section presents detailed results for the baseline RAG systems evaluated in this work. Table \ref{tab:qa_results} reports question answering performance across different retrievers (BM25, ms-marco-bert-base-dot-v5, ColBERTv2), language models (GPT-4o-mini, o3-mini, QWen2.5-14B), and retrieval depths ($k \in \{5, 10, 20, 100\}$. These results serve as reference points for comparison with the language agent architectures.
 
 \input{chapter4/qa_results}
 
@@ -13,7 +13,7 @@ This section shows results for the baselines systems implemented in this work.
 \section{Baselines}
 \label{section:baselines_prompts}
 
-This section demonstrates the prompts used to design the RAG baseline systems.
+This section presents the prompts used to implement the RAG baseline systems.
 
 \input{appendix/prompt_base_qa}
 \input{appendix/prompt_base_qa_qwen}
@@ -25,7 +25,7 @@ This section demonstrates the prompts used to design the RAG baseline systems.
 \section{QA Agent}
 \label{section:agent_prompts}
 
-This section shows the prompts used for implementing the variants of the QA Agent.
+This section shows the prompts used to implement the variants of the QA Agent.
 
 \input{appendix/prompt_qa_agent_reranking}
 \input{appendix/prompt_qa_agent_reflection}
@@ -38,11 +38,11 @@ This section presents the prompts used for implementing both the DAG Agent and t
 
 \input{appendix/prompt_base_dag}
 
-\noindent Figure \ref{fig:prompt_dag_execution} shows the prompt used to execute the DAG plan in the DAG Agent. In addition, few-shot examples were provided for each supported command during our experiments. In the actual implementation, the execution loop is controlled programmatically, so the command to execute (SOLVE, ALTERNATIVE\_ANSWER, or FINAL\_ANSWER) is always known in advance. Because the agent only ever needs to respond to a single, predetermined command at each step, we removed definitions for unused commands and tools during LLM calls.
+\noindent Figure \ref{fig:prompt_dag_execution} shows the prompt used to execute the DAG plan in the DAG Agent. Few-shot examples were also provided for each supported command during our experiments. In the actual implementation, the execution loop is controlled programmatically, so the command to execute (SOLVE, ALTERNATIVE\_ANSWER, or FINAL\_ANSWER) is always known in advance. Because the agent only needs to respond to a single, predetermined command at each step, we remove the unused command definitions and tool descriptions from the prompt to reduce token usage.
 
 \input{appendix/prompt_dag_execution}
 
-\noindent Similarly, figure \ref{fig:prompt_auto_dag_execution} shows the prompt used to execute the DAG plan in the Auto DAG Agent. In our experiments, we included few-shot examples.
+\noindent Similarly, figure \ref{fig:prompt_auto_dag_execution} shows the prompt used to execute the DAG plan in the Auto DAG Agent. Few-shot examples were included in our experiments.
 
 \input{appendix/prompt_auto_dag_execution}
 
@@ -53,7 +53,7 @@ This section presents the prompts used for implementing both the DAG Agent and t
 \cleardoublepage
 \section{Long-lived QA Agent}
 
-Figure \ref{fig:prompt_cognitive} presents the prompt used to generate a correct reasoning chain after evaluating the correctness of an answer in the Long-lived QA Agent architecture.
+Figure \ref{fig:prompt_cognitive} presents the prompt used to generate a correct reasoning chain after evaluating the correctness of an answer.
 
 \input{appendix/prompt_cognitive}
 

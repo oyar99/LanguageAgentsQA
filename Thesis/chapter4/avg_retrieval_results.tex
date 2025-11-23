@@ -1,20 +1,19 @@
-\begin{table}[ht]
+\begin{table}[!h]
     \centering
     \begin{tabular}{lccccc}
             \toprule
-            & \multicolumn{5}{c}{\textbf{Average}} \\
-            \cmidrule(lr){2-6}
-             K & \small 2 & \small 5 & \small 10 & \small 20 & \small 100 \\
+             $k$ & \small 2 & \small 5 & \small 10 & \small 20 & \small 100 \\
             \midrule
-            \small BM25 & 41.8 & 53.0 & 60.8 & 66.8 & 76.2 \\
-            \small msmarco-bert &
+            BM25 & 41.8 & 53.0 & 60.8 & 66.8 & 76.2 \\
+            msmarco-bert-base-dot-v5 &
 49.0 & 58.7 & 64.2 & 68.6 & 77.2 \\
-            \small ColBERTv2 & \textbf{50.2} & \underline{61.0} & \underline{66.7} & \underline{71.0} & \underline{79.0} \\
+            ColBERTv2 & \textbf{50.2} & \underline{61.0} & \underline{66.7} & \underline{71.0} & \underline{79.0} \\
             \midrule
-            \small HippoRAG (Qwen2.5-14B) & 42.7 & 54.1 & 61.0 & 66.5 & 76.5 \\
-            \small HippoRAG (GPT-4o-mini) &  \underline{49.3} & \textbf{61.1} & \textbf{67.5} & \textbf{72.5} & \textbf{81.1} \\
+            HippoRAG (Qwen2.5-14B) & 42.7 & 54.1 & 61.0 & 66.5 & 76.5 \\
+            HippoRAG (GPT-4o-mini) &  \underline{49.3} & \textbf{61.1} & \textbf{67.5} & \textbf{72.5} & \textbf{81.1} \\
             \bottomrule
+            \multicolumn{6}{p{11cm}}{\rule{0pt}{3ex} \footnotesize \textbf{Bold} values indicate the best score, while \underline{underlined} values indicate the second-best score.} \\
         \end{tabular}
-    \caption{Average baselines retrieval performance on MHQA datasets.}
+    \caption{Average recall@$k$ performance of RAG systems: ColBERTv2, msmarco-bert-base-dot-v5, BM25, and HippoRAG on MHQA datasets.}
     \label{tab:avg_retrieval_results}
 \end{table}

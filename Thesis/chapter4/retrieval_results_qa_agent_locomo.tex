@@ -1,4 +1,4 @@
-\begin{table}[!t]
+\begin{table}[!h]
     \centering
     \adjustbox{max width=\textwidth}{
         \begin{tabular}{lccc}
@@ -9,21 +9,21 @@
             \midrule
             \multicolumn{4}{c}{\textit{QA Agent}} \\
             \midrule
-            \scriptsize ColBERTv2/GPT-4o-mini & 62.1 & 15.4 & 23.7 \\
-            \scriptsize ColBERTv2/GPT-4.1-mini & 62.7 & 15.5 & 23.9 \\
-            \scriptsize Re-ranking (GPT-4o-mini) & 60.7 & 28.4 & 35.4 \\
-            \scriptsize Pagination (GPT-4o-mini) & 63.6 & 15.2 & 23.5 \\
-            \scriptsize Reflection (GPT-4o-mini) & 60.8 & 15.2 & 23.4 \\
+            ColBERTv2/GPT-4o-mini & 62.1 & 15.4 & 23.7 \\
+            ColBERTv2/GPT-4.1-mini & 62.7 & 15.5 & 23.9 \\
+            Re-Ranking (GPT-4o-mini) & 60.7 & 28.4 & 35.4 \\
+            Pagination (GPT-4o-mini) & 63.6 & 15.2 & 23.5 \\
+            Reflection (GPT-4o-mini) & 60.8 & 15.2 & 23.4 \\
             \midrule
             \multicolumn{4}{c}{\textit{DAG Agent}} \\
             \midrule
-            \scriptsize GPT-4o-mini & 62.2 & 12.0 & 19.2 \\
-            \scriptsize GPT-4.1-mini & 59.9 & 13.6 & 21.3 \\
+            GPT-4o-mini & 62.2 & 12.0 & 19.2 \\
+            GPT-4.1-mini & 59.9 & 13.6 & 21.3 \\
             \midrule
             \multicolumn{4}{c}{\textit{Auto DAG Agent}} \\
             \midrule
-            \scriptsize GPT-4o-mini & 61.2 & 11.7 & 18.8 \\
-            \scriptsize GPT-4.1-mini & 59.6 & 13.6 & 21.2 \\
+            GPT-4o-mini & 61.2 & 11.7 & 18.8 \\
+            GPT-4.1-mini & 59.6 & 13.6 & 21.2 \\
             \midrule
             \multicolumn{4}{c}{\textit{Long-lived QA Agent}} \\
             \midrule
@@ -31,6 +31,6 @@
             \bottomrule
         \end{tabular}
     }
-    \caption{QA Agent retrieval performance on LoCoMo.}
+    \caption{Retrieval performance of language agents on LoCoMo, measured using Recall (R), Precision (P), and $F_1$.}
     \label{tab:retrieval_results_qa_agent_locomo}
 \end{table}
