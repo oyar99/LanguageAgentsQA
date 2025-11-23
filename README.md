@@ -100,7 +100,7 @@ AZURE_OPENAI_API_KEY= # Specifies the Azure OpenAI Key
 AZURE_OPENAI_ENDPOINT= # Specifies the Azure OpenAI Endpoint
 OPENAI_API_KEY= # Specifies the Azure OpenAI Key for HippoRAG
 SCRIPT_LOG_LEVEL= # Defines log level. INFO is default.
-CUDA_VISIBLE_DEVICES= # GPUs to use for computiation intensive tasks
+CUDA_VISIBLE_DEVICES= # GPUs to use for computational intensive tasks
 REMOTE_LLM= # Whether to use a remote LLM endpoint or a local endpoint (1) (0)
 LLM_ENDPOINT= # The LLM endpoint if using vLLM for inference
 ```
