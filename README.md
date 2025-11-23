@@ -1,4 +1,4 @@
-# Evaluating Cognitive Language Agent Architectures for Question Answering
+# Evaluating Language Agent Architectures for Question Answering
 
 _Cognitive Language Agents_ is a framework for designing **intelligent** language agents that integrate **LLMs** for reasoning and communication, using language as their primary means of interacting with their environment. These agents consist of three key components: **memory, action, and decision-making**.
 
