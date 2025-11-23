@@ -60,7 +60,7 @@ pip install -r requirements.txt
 
 ## Closed-Source Models
 
-The script supports any **closed-source models** that allow **batch deployments** via the Azure Open AI API and **open-source models** that are available via VLLM.
+The script supports any **closed-source models** via the Azure Open AI API and **open-source models** that are available via VLLM.
 
 Sample Models
 
