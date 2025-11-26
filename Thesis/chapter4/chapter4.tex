@@ -37,7 +37,7 @@ We first evaluated the retrieval performance of the baseline systems introduced 
 
 \noindent The QA Agent with Reflection shows no notable changes in retrieval performance compared with the base QA Agent.
 
-\noindent Overall, these simple agents outperform all baselines on HotpotQA, 2Wiki and MuSiQue. On HotpotQA, the QA Agent retrieves an average of $7.9$ unique documents per query and achieves a recall of $85.7$, compared with $85.3$ for the RAG baseline with ColBERTv2 at $k = 20$. On 2Wiki, the QA Agent retrieves an average of $10.4$ unique documents and achieves a recall of $90.3$, representing a $15.8$-point improvement over the RAG baseline using msmarco-bert-base-dot-v5 at $k = 100$. On MuSiQue, the base QA Agent retrieves an average of $10.9$ unique documents per query and achieves a recall of $69.0$, compared with $64.7$ for the RAG baseline with HippoRAG at $k = 20$. In all cases, the base QA Agent achieves higher recall at lower values of $k$.
+\noindent Overall, these simple agents outperform all baselines on HotpotQA, 2Wiki and MuSiQue. On HotpotQA, the QA Agent retrieves an average of $7.9$ unique documents per query and achieves a recall of $85.7$, compared with $85.3$ for the RAG baseline with ColBERTv2 at $k = 20$. On 2Wiki, the QA Agent retrieves an average of $10.4$ unique documents and achieves a recall of $90.3$, representing a $15.8$-point improvement over the RAG baseline using ColBERTv2 at $k = 100$. On MuSiQue, the base QA Agent retrieves an average of $10.9$ unique documents per query and achieves a recall of $69.0$, compared with $64.7$ for the RAG baseline with HippoRAG at $k = 20$. In all cases, the base QA Agent achieves higher recall at lower values of $k$.
 
 \input{chapter4/retrieval_results_agents}
 
@@ -109,7 +109,7 @@ We first evaluated the retrieval performance of the baseline systems introduced 
 
 \input{chapter4/qa_results_agents_cognitive}
 
-\noindent We also evaluate the agents on LoCoMo. Results in Table \ref{tab:qa_results_agent_locomo}, indicate that the language agent architectures struggle to generalize to these questions. For example, the QA Agent achieves $R_1 = 47.5$, while the RAG baseline with $k = 5$ achieves $R_1 = 51.6$, despite both using GPT-4o-mini and few-shot prompting. DAG Agent performance is similarly affected and can be counterproductive in some cases. Consider the question \textit{What is Caroline's identity?}, the RAG baseline retrieves the relevant conversation directly: 
+\noindent We also evaluate the agents on LoCoMo. Results in Table \ref{tab:qa_results_agent_locomo}, indicate that the language agent architectures struggle to generalize to these questions. For example, the QA Agent achieves $R_1 = 47.5$, while the RAG baseline with $k = 5$ achieves $R_1 = 51.6$, despite both using GPT-4o-mini, ColBERTv2, and few-shot prompting. DAG Agent performance is similarly affected and can be counterproductive in some cases. Consider the question \textit{What is Caroline's identity?}, the RAG baseline retrieves the relevant conversation directly: 
 
 \begin{quote}
 \begin{description}[leftmargin=2em, labelwidth=3em, labelsep=0.5em, style=unboxed, font=\itshape]
@@ -122,7 +122,7 @@ We first evaluated the retrieval performance of the baseline systems introduced 
 \end{quote}
 
 \noindent From this context, it is easy to infer Caroline's identity. The DAG plan, however, begins without context and generates questions based on assumptions, such as 
-\textit{What is Caroline's age?} or \textit{What is Caroline's full age?}. These questions introduce bias into the reasoning process and can lead to verbose, irrelevant, or incorrect answers, demonstrating a limitation of the planning-based approach for non-compositional questions.
+\textit{What is Caroline's birthplace?} or \textit{What is Caroline's full age?}. These questions introduce bias into the reasoning process and can lead to verbose, irrelevant, or incorrect answers, demonstrating a limitation of the planning-based approach for non-compositional questions.
 
 \input{chapter4/qa_results_agents_locomo}
 
